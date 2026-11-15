@@ -117,3 +117,12 @@ test("spawnMissed: schedule repeats keep each missed date as its own task", () =
   assert.equal(spawnMissed(t3, {}, "2026-11-15"), false);
   assert.equal(t3[0].date, "2026-11-10");
 });
+
+test("deadline: kept without a date, bad values removed, shifts with a repeat", () => {
+  const n = normalize({ tasks: [{ id: "a", text: "x", dl: "2026-12-01" }, { id: "b", text: "y", dl: "nope" }] });
+  assert.equal(n.tasks[0].dl, "2026-12-01");
+  assert.equal(n.tasks[1].dl, undefined);
+  const t = [{ id: "r", text: "z", done: false, u: 1, date: "2026-11-12", dl: "2026-11-14", rep: { n: 1, unit: "day", mode: "schedule" } }];
+  spawnMissed(t, {}, "2026-11-14");
+  assert.deepEqual(t.map((x) => [x.id, x.date, x.dl]), [["r", "2026-11-14", "2026-11-16"], ["r@2026-11-12", "2026-11-12", "2026-11-14"], ["r@2026-11-13", "2026-11-13", "2026-11-15"]]);
+});

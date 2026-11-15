@@ -57,6 +57,7 @@ function addMonths(s, n) {
   const [y, m, d] = parts(s), i = y * 12 + m + n, ny = Math.floor(i / 12), nm = i % 12;
   return fmt(ny, nm, Math.min(d, new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate())); // the 31st clamps to the month's last day
 }
+export const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
 export const addInterval = (s, n, unit) => (unit === "day" ? addDays(s, n) : unit === "week" ? addDays(s, 7 * n) : addMonths(s, unit === "year" ? 12 * n : n));
 export const nextMonday = (now) => addDays(now, (8 - dow(now)) % 7 || 7);
 
@@ -89,8 +90,9 @@ export function spawnMissed(tasks, tomb, now) {
       const id = `${t.id}@${m}`;
       if (tomb[id] || tasks.some((x) => x.id === id)) continue;
       const { rep, dt, ...rest } = t;
-      tasks.push({ ...rest, id, date: m, done: false, u: Date.parse(m) || 0, ...(t.c ? { c: t.c.map((c) => ({ ...c, done: false })) } : {}) });
+      tasks.push({ ...rest, ...(t.dl ? { dl: addDays(t.dl, daysBetween(t.date, m)) } : {}), id, date: m, done: false, u: Date.parse(m) || 0, ...(t.c ? { c: t.c.map((c) => ({ ...c, done: false })) } : {}) });
     }
+    if (t.dl) t.dl = addDays(t.dl, daysBetween(t.date, d));
     t.date = d;
     t.c?.forEach((c) => { c.done = false; });
     changed = true;
@@ -127,6 +129,7 @@ const extras = (t) => {
     if (typeof t.tm === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(t.tm)) out.tm = t.tm; // optional time of day, local "HH:MM"
     if (t.ev === true) out.ev = true; // "this evening": Today lists it in its own group
   }
+  if (typeof t.dl === "string" && DATE_RE.test(t.dl) && addDays(t.dl, 0) === t.dl) out.dl = t.dl; // deadline: a day it must be done by, apart from the date it is planned for
   if (typeof t.n === "string" && t.n.trim()) out.n = t.n.slice(0, 5000); // notes
   const c = cleanChecks(t.c);
   if (c.length) out.c = c; // checklist: [{ id, text, done }]
@@ -227,4 +230,4 @@ export function merge(a, b) {
 }
 
 // Cheap equality for two sides, used to skip no-op saves and uploads.
-export const sig = (s) => JSON.stringify([s.tasks.map((t) => [t.id, t.text, t.done, t.u, t.date, t.rep, t.l, t.s, t.h, t.dt, t.ev, t.tm, t.n, t.c]), Object.entries(s.tomb).sort(), s.ou, (s.lists ?? []).map((l) => [l.id, l.name, l.u, l.heads, l.subs])]);
+export const sig = (s) => JSON.stringify([s.tasks.map((t) => [t.id, t.text, t.done, t.u, t.date, t.dl, t.rep, t.l, t.s, t.h, t.dt, t.ev, t.tm, t.n, t.c]), Object.entries(s.tomb).sort(), s.ou, (s.lists ?? []).map((l) => [l.id, l.name, l.u, l.heads, l.subs])]);

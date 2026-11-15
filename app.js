@@ -1,4 +1,4 @@
-import { addDays, label, linkify, merge, move, newId, nextDate, nextMonday, normalize, spawnMissed, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
+import { addDays, label, linkify, merge, move, newId, daysBetween, nextDate, nextMonday, normalize, spawnMissed, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
 import { parseWhen } from "./nl.js";
 import { VAPID_PUBLIC, ackInbox, captureUrl, derive, newCode, parseCode, pullInbox, putReminders, sync } from "./sync.js";
 
@@ -20,9 +20,6 @@ try { for (const id of JSON.parse(localStorage.getItem(FOLD) ?? "[]")) folded.ad
 const REM = "braindump.rem"; // reminders are on for this device
 let remOn = false, remSent = "", remTimer = 0;
 try { remOn = !!localStorage.getItem(REM); } catch {}
-const SCHED = "braindump.sched"; // is the Scheduled group open; per device, not synced
-let showSched = false;
-try { showSched = !!localStorage.getItem(SCHED); } catch {}
 // Going deeper (an area from a task, a project from its area) remembers where you came from; the Back button returns there.
 // Picking a view in the sidebar starts over.
 let trail = [];
@@ -102,7 +99,7 @@ function fill(el, text) {
 }
 
 // Done tasks leave every view except Done, which groups them by the day they were completed.
-const inView = (t) => (view === "done" ? t.done : !t.done && (view === "all" ? true : view === "board" || view === "inbox" ? !areaOf(t) && !t.date : view === "today" ? !!t.date && t.date <= day : view === "upcoming" ? t.date > day : areaOf(t) === vArea() && (!vSub() || subOf(meta.lists.find((l) => l.id === t.l), t)?.id === vSub())));
+const inView = (t) => (view === "done" ? t.done : !t.done && (view === "all" ? true : view === "board" || view === "inbox" ? !areaOf(t) && !t.date : view === "today" ? (!!t.date && t.date <= day) || (!!t.dl && t.dl <= day) : view === "upcoming" ? t.date > day : areaOf(t) === vArea() && (!vSub() || subOf(meta.lists.find((l) => l.id === t.l), t)?.id === vSub())));
 const byDate = (a, b) => (a.date + (a.tm ?? "")).localeCompare(b.date + (b.tm ?? "")); // by day, then by time
 const dayOf = (t) => today(new Date(t.dt ?? t.u));
 
@@ -170,13 +167,20 @@ function row(t, td) {
   if (t.tm && !t.done && !past) w.prepend(svg("bell"));
   if (chip && view !== "today" && t.date <= td) w.prepend(svg("today")); // a star marks what is due today (or overdue); the Today view needs none // only while the reminder is still to come; a past one keeps its date and time
   if (ar) tx.after(ar); // the area follows the title, inline
-  li.append(cb, body, ...(chip ? [w] : []), x);
+  const dl = !!t.dl && !t.done && Object.assign(document.createElement("button"), { type: "button", className: `when chip dl${t.dl <= td ? " over" : ""}`, title: "Deadline", textContent: `Due ${whenLabel({ date: t.dl }, td)}` });
+  if (dl) { dl.setAttribute("aria-label", "Deadline"); dl.prepend(svg("flag")); }
+  li.append(cb, body, ...(chip ? [w] : []), ...(dl ? [dl] : []), x);
   return li;
 }
 const secRow = (text, ...kids) => {
   const li = Object.assign(document.createElement("li"), { className: "sec" });
   li.append(...(kids.length ? kids : [text]));
   return li;
+};
+const upRow = (n, key) => { // the general Upcoming heading folds, per page; a group's future tasks have no heading
+  const u = ibtn("chev", "upg", () => { if (!folded.delete(key)) folded.add(key); try { localStorage.setItem(FOLD, JSON.stringify([...folded])); } catch {} render(); }, "", folded.has(key));
+  u.append(`Upcoming (${n})`);
+  return Object.assign(secRow("", svg("upcoming"), u), { className: "sec ups" });
 };
 const ibtn = (k, cls, fn, title, open) => { const b = btn("", cls, fn, title); b.append(svg(k)); if (open) b.classList.add("open"); return b; }; // a button drawn with an ICON, not a glyph
 const btn = (text, cls, fn, title) => Object.assign(document.createElement("button"), { type: "button", textContent: text, className: cls, title, onclick: fn });
@@ -199,10 +203,10 @@ function renderBoard(mine, td) {
     };
     const h = btn(name, "colh", l ? () => setView(l.id, true) : () => setView("inbox", true), l ? "Open this area" : "Open the Inbox");
     const toggle = (key) => () => { if (!folded.delete(key)) folded.add(key); try { localStorage.setItem(FOLD, JSON.stringify([...folded])); } catch {} render(); };
-    const later = inCol.filter((t) => t.date > td).sort(byDate), now_ = inCol.filter((t) => !(t.date > td)); // scheduled tasks wait in Upcoming at the bottom
+    const inSub = (t) => !!l && !!subOf(l, t), later = inCol.filter((t) => t.date > td && !inSub(t)).sort(byDate), now_ = inCol.filter((t) => !(t.date > td && !inSub(t))); // scheduled tasks wait in Upcoming, unless they sit in a project
     body.append(...now_.filter((t) => !l || !subOf(l, t)).map((t) => row(t, td)));
     for (const sa of l?.subs ?? []) { // headings are not shown: a project's tasks sit together
-      const mineSa = now_.filter((t) => subOf(l, t)?.id === sa.id);
+      const mineSa = inCol.filter((t) => subOf(l, t)?.id === sa.id).sort((a, b) => (a.date > td) - (b.date > td) || (a.date > td ? byDate(a, b) : 0));
       if (!mineSa.length) continue;
       const key = `bd:${sa.id}`, shut = folded.has(key);
       const sh = ibtn("chev", "hc", toggle(key), shut ? "Expand" : "Collapse", !shut), nm = btn(sa.name, "subh", () => setView(`${l.id}|${sa.id}`, true), "Open this project");
@@ -210,10 +214,7 @@ function renderBoard(mine, td) {
       if (!shut) body.append(...mineSa.map((t) => row(t, td)));
     }
     if (later.length) {
-      const key = `bd:up:${id}`, open = folded.has(key), u = ibtn("chev", "upg", toggle(key), "", open);
-      u.append(`Upcoming (${later.length})`);
-      body.append(secRow("", u));
-      if (open) body.append(...later.map((t) => row(t, td)));
+      body.append(upRow(later.length, `sched:${id}`), ...(folded.has(`sched:${id}`) ? later.map((t) => row(t, td)) : []));
     }
     c.append(h, add, body);
     return c;
@@ -291,29 +292,21 @@ function render() {
       return { sa: sa?.id ?? "", h: t.s ? sa?.heads.find((x) => x.id === t.h)?.id ?? "" : "" };
     };
     const placed = (t) => !!(loc(t).sa || loc(t).h);
-    const sched = mine.filter((t) => t.date > td && (vSub() || !placed(t))).sort(byDate); // closest first; a scheduled task in a group stays in it
+    const sched = mine.filter((t) => t.date > td && (vSub() ? !loc(t).h : !placed(t))).sort(byDate); // closest first; one under a heading, or in a project seen from its area, stays there
     open.filter((t) => !placed(t) && !eve.has(t)).forEach((t) => list.append(row(t, td)));
     // A group is a subarea or a heading: a header row (fold, name, count when folded, extras, delete) and its tasks, scheduled ones last.
     const group = (item, cls, inside, ds, isSub, ...extra) => {
       const shut = folded.has(item.id) && !(isSub && vSub()); // a subarea on its own page is never folded
-      const later = inside.filter((t) => t.date > td).sort(byDate), key = `up:${item.id}`; // future tasks get their own Upcoming row, closed until opened
-      inside = inside.filter((t) => !(t.date > td));
       const fold = ibtn("chev", "hc", () => { if (shut) folded.delete(item.id); else folded.add(item.id); try { localStorage.setItem(FOLD, JSON.stringify([...folded])); } catch {} render(); }, shut ? "Expand" : "Collapse", !shut);
       const hl = Object.assign(secRow("", fold, isSub && !vSub() ? btn(item.name, "hn", () => setView(`${vArea()}|${item.id}`, true), "Open this project") : btn(item.name, "hn", () => renameItem(item), "Rename"), ...extra, ibtn("x", "hx", () => deleteItem(item, isSub), isSub ? "Delete project" : "Delete heading")), { className: `sec ${cls}` });
       Object.assign(hl.dataset, ds); // dragging a task onto the header files the task under it
       list.append(hl);
-      if (!shut) inside.forEach((t) => list.append(row(t, td)));
-      if (!shut && !vSub() && later.length) { // on a project's own page the page-level Upcoming covers these
-        const open = folded.has(key), u = ibtn("chev", "upg", () => { if (open) folded.delete(key); else folded.add(key); try { localStorage.setItem(FOLD, JSON.stringify([...folded])); } catch {} render(); }, "", open);
-        u.append(`Upcoming (${later.length})`);
-        list.append(Object.assign(secRow("", u), { className: `sec ups${isSub ? "" : " in"}` }));
-        if (open) later.forEach((t) => list.append(row(t, td)));
-      }
+      if (!shut) [...inside.filter((t) => !(t.date > td)), ...inside.filter((t) => t.date > td).sort(byDate)].forEach((t) => list.append(row(t, td))); // future-dated tasks last, closest first
       return shut;
     };
     for (const sa of l?.subs ?? []) {
       if (vSub() && sa.id !== vSub()) continue;
-      const shut = group(sa, "sub", mine.filter((t) => loc(t).sa === sa.id && !loc(t).h), { sid: sa.id }, true, btn("+", "ha", () => addHead(sa), "Add a heading"));
+      const shut = group(sa, "sub", mine.filter((t) => loc(t).sa === sa.id && !loc(t).h && !(vSub() && t.date > td)), { sid: sa.id }, true, btn("+", "ha", () => addHead(sa), "Add a heading"));
       if (vSub()) list.querySelector("li.sec.sub")?.remove(); // the page title already names it
       if (!shut) for (const h of sa.heads) group(h, "head in", mine.filter((t) => loc(t).sa === sa.id && loc(t).h === h.id), { hid: h.id, hs: sa.id }, false);
     }
@@ -324,12 +317,12 @@ function render() {
       open.filter((t) => eve.has(t)).forEach((t) => list.append(row(t, td)));
     }
     if (sched.length) {
-      list.append(secRow("", (() => { const u = ibtn("chev", "upg", () => { showSched = !showSched; try { localStorage.setItem(SCHED, showSched ? "1" : ""); } catch {} render(); }, "", showSched); u.append(`Upcoming (${sched.length})`); return u; })()));
-      if (showSched) sched.forEach((t) => list.append(row(t, td)));
+      list.append(upRow(sched.length, `sched:${view}`));
+      if (folded.has(`sched:${view}`)) sched.forEach((t) => list.append(row(t, td)));
     }
   }
   remQueue();
-  renderTabs({ inbox: tasks.filter((t) => !t.done && !areaOf(t) && !t.date).length, today: tasks.filter((t) => !t.done && t.date <= td).length });
+  renderTabs({ inbox: tasks.filter((t) => !t.done && !areaOf(t) && !t.date).length, today: tasks.filter((t) => !t.done && (t.date <= td || t.dl <= td)).length });
 }
 
 async function addHead(sa) {
@@ -370,6 +363,7 @@ const ICON = { // 24px stroke icons, drawn by style.css
   all: '<rect x="4" y="10" width="16" height="10" rx="2.500"/><path d="M7 5.500h10"/>',
   task: '<circle cx="12" cy="12" r="7.5"/>',
   board: '<rect x="4" y="4" width="4" height="15" rx="1"/><rect x="10" y="4" width="4" height="9" rx="1"/><rect x="16" y="4" width="4" height="12" rx="1"/>',
+  flag: '<path d="M6 21V4M6 5h11l-2 4 2 4H6"/>',
   chev: '<path d="M9 6l6 6-6 6"/>', // points right; .open turns it down
 };
 const icon = (k) => Object.assign(document.createElementNS("http://www.w3.org/2000/svg", "svg"), { innerHTML: ICON[k] }); // set below with attributes
@@ -590,7 +584,7 @@ list.addEventListener("change", (e) => {
   }
   const finish = () => {
     const before = e.target.checked && structuredClone(t); // undo restores the whole task: a repeating one gets its old date and checklist back
-    if (e.target.checked && t.rep) { t.date = nextDate(t.date, t.rep, today()); t.c?.forEach((c) => { c.done = false; }); } // repeating: no done state, it moves to its next date with a fresh checklist
+    if (e.target.checked && t.rep) { const was = t.date; t.date = nextDate(t.date, t.rep, today()); if (t.dl) t.dl = addDays(t.dl, daysBetween(was, t.date)); t.c?.forEach((c) => { c.done = false; }); } // repeating: no done state, it moves to its next date with a fresh checklist
     else { t.done = e.target.checked; if (t.done) t.dt = now(); else delete t.dt; }
     touch(t); commit();
     if (before) undoable(t.rep ? "Moved to next date" : "Task completed", () => { const i = tasks.indexOf(t); if (i < 0) return; tasks[i] = before; touch(before); commit(); });
@@ -648,6 +642,7 @@ function openWhen(t, isNew) { wid = t.id; wsnap = structuredClone(t); wnew = !!i
 function fillWhen(t) {
   $("wdate").value = t.date ?? "";
   $("wtime").value = t.tm ?? "";
+  $("wdl").value = t.dl ?? "";
   $("runit").value = t.rep?.unit ?? "";
   $("rn").value = t.rep?.n ?? 1;
   $("rmode").value = t.rep?.mode ?? "schedule";
@@ -668,6 +663,7 @@ function applyWhen(date = $("wdate").value, ev) {
   if (date) t.date = date; else delete t.date;
   if (date && ev) t.ev = true; else delete t.ev;
   if (date && tm) t.tm = tm; else delete t.tm;
+  if ($("wdl").value) t.dl = $("wdl").value; else delete t.dl;
   if (date && unit) t.rep = { n, unit, mode: $("rmode").value }; else delete t.rep;
   touch(t); commit(); fillWhen(t);
 }
@@ -680,7 +676,7 @@ wd.querySelectorAll("[data-d]").forEach((b) => {
     applyWhen({ today: today(), evening: today(), tomorrow: addDays(today(), 1), monday: nextMonday(today()) }[k], k === "evening" ? true : k === "today" ? false : undefined); // "Today" clears the evening flag, "Evening" sets it, the others keep it
   };
 });
-["wdate", "runit", "rn", "rmode"].forEach((id) => ($(id).onchange = () => applyWhen()));
+["wdate", "wdl", "runit", "rn", "rmode"].forEach((id) => ($(id).onchange = () => applyWhen()));
 // The time is typed in 24-hour form ("13", "1330", "13:30"): a native time input follows the phone's 12-hour setting.
 $("wtime").onchange = () => {
   const s = $("wtime").value.trim(), m = s.match(/^(\d{1,2})(?::?(\d{2}))?$/);
@@ -717,6 +713,7 @@ $("wchk").oninput = (e) => { if (e.target.type === "text" && e.target.value.trim
 $("wchk").onclick = (e) => { if (e.target.classList.contains("cx")) fillChecks(edited((t) => rmItem(t, itemId(e)))); };
 $("sadd").onclick = addSub;
 $("hadd").onclick = () => { const sa = cur()?.subs.find((s) => s.id === vSub()); if (sa) addHead(sa); };
+$("wdlclear").onclick = () => { $("wdl").value = ""; applyWhen(); };
 $("wtclear").onclick = () => { $("wtime").value = ""; applyWhen(); };
 $("wclose").onclick = () => wd.close();
 $("wcancel").onclick = () => { wdiscard = true; wd.close(); };

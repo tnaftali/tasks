@@ -295,8 +295,8 @@ li .ci input[type=checkbox]::before { inset: -4px; }
 }
 
 /* a project's or heading's own Upcoming row */
-li.sec.ups { padding: 10px 0 6px 28px; }
-li.sec.ups.in { padding-left: 50px; }
+li.sec.ups { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 12px 0 6px; border-top: 1px solid var(--border); }
+li.sec.ups > svg { flex: none; width: 15px; height: 15px; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Board: one card per area, side by side; the page scrolls sideways, each card scrolls on its own */
 body.board main { max-width: none; }
@@ -390,3 +390,10 @@ body.board #fab, body.menu #fab { display: none; }
 
 /* the area follows the title text, small and muted */
 li .body > .area { display: inline; max-width: none; padding: 0 0 0 8px; font-size: 13px; line-height: inherit; white-space: normal; overflow: visible; text-align: left; }
+
+.when.dl.over { color: var(--red); }
+#wdlclear { display: grid; place-items: center; flex: none; width: 36px; height: 44px; margin: 0; padding: 0; background: none; border: 0; color: var(--faint); font-size: 18px; cursor: pointer; }
+#wdlclear svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+@media (max-width: 600px) { #whend #wdlclear { height: 40px; } }
+
+.when.dl { border: 1px solid var(--border-strong); border-radius: 999px; }
