@@ -1,4 +1,4 @@
-import { addDays, label, linkify, merge, move, newId, nextDate, nextMonday, normalize, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
+import { addDays, label, linkify, merge, move, newId, nextDate, nextMonday, normalize, spawnMissed, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
 import { parseWhen } from "./nl.js";
 import { VAPID_PUBLIC, ackInbox, captureUrl, derive, newCode, parseCode, pullInbox, putReminders, sync } from "./sync.js";
 
@@ -241,6 +241,7 @@ function renderAll(mine, td) {
 }
 let drawn = 0; // when the list was last drawn
 function render() {
+  if (spawnMissed(tasks, meta.tomb, today())) { save(); queue(); } // missed repeats become their own tasks
   drawn = now();
   const td = (day = today());
   if (isArea() && !(cur() && (!vSub() || cur().subs.some((s) => s.id === vSub())))) view = "today"; // that area or subarea was deleted, here or on another device
@@ -656,7 +657,7 @@ function fillWhen(t) {
   const on = { today: t.date === td && !t.ev, evening: t.date === td && !!t.ev, tomorrow: t.date === addDays(td, 1), monday: t.date === nextMonday(td), clear: !t.date };
   wd.querySelectorAll("[data-d]").forEach((b) => b.setAttribute("aria-pressed", String(on[b.dataset.d])));
   wd.toggleAttribute("data-never", !t.rep);
-  $("rhelp").textContent = t.rep ? (t.rep.mode === "after" ? "The next date counts from the day you complete it." : "Keeps its rhythm. Missed dates are skipped, not stacked.") : "";
+  $("rhelp").textContent = t.rep ? (t.rep.mode === "after" ? "The next date counts from the day you complete it." : "Keeps its rhythm. A missed date stays as its own task until you finish or delete it.") : "";
 }
 function applyWhen(date = $("wdate").value, ev) {
   const t = tasks.find((x) => x.id === wid);

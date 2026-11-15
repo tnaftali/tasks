@@ -98,7 +98,7 @@ li.future { opacity: .55; }
 li.sec { min-height: 0; padding: 18px 0 6px; border-bottom: 0; background: none; font: 600 12px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
 li.sec button { background: none; border: 0; padding: 6px 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; }
 li.sec button:hover { color: var(--text); }
-li.sec.head { margin: 0; display: flex; align-items: center; gap: 4px; }
+li.sec.head { margin: 0; display: flex; align-items: center; gap: 10px; }
 li.sec.head .hn { font: inherit; }
 li.sec.sub { margin: 0; display: flex; align-items: center; gap: 4px; padding-top: 22px; color: var(--text); font: 700 16px var(--title); letter-spacing: 0; text-transform: none; }
 li.sec.sub .hn { font: inherit; }
@@ -106,7 +106,6 @@ li.sec.sub .hx, li.sec.head .hx, li.sec .ha { opacity: 0; font-size: 20px; paddi
 li.sec.sub:hover .hx, li.sec.sub:hover .ha, li.sec.head:hover .ha { opacity: 1; }
 @media (hover: none) { li.sec.sub .hx, li.sec .ha { opacity: 1; } }
 li.sec.head { padding-top: 14px; font: 600 12px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-li.sec.head.in { padding-left: 22px; }
 li.sec.head .hx { opacity: 0; font-size: 20px; padding: 6px 10px; }
 li.sec.head:hover .hx { opacity: 1; }
 @media (hover: none) { li.sec.head .hx { opacity: 1; } }
@@ -204,7 +203,7 @@ li.sec[data-ev] svg, #whend .quick svg { flex: none; width: 18px; height: 18px; 
 #whend .quick button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 52px; font-weight: 500; }
 #whend .row.quick button[aria-pressed=true] { background: var(--bg); border-color: var(--border-strong); font-weight: 650; box-shadow: inset 0 0 0 1px var(--border-strong); }
 #whend .row.quick button[aria-pressed=true] svg { stroke: var(--text); }
-li.sec.head .hc { padding: 6px 4px; color: var(--faint); font-size: 14px; width: 22px; }
+li.sec.head .hc { padding: 6px 1px; color: var(--faint); font-size: 14px; width: 18px; } /* chevron sits in the checkbox column, the name in the title column */
 #list li { transition: transform .15s ease; }
 #list li.drag { transition: none; }
 

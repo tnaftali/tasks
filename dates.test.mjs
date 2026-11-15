@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { addDays, addInterval, nextDate, nextMonday, normalize, parseBackup, sig, today, whenLabel } from "./logic.js";
+import { addDays, addInterval, nextDate, nextMonday, normalize, parseBackup, sig, spawnMissed, today, whenLabel } from "./logic.js";
 
 test("addInterval: days, weeks, months, years, month-end clamp, leap day", () => {
   assert.equal(addInterval("2026-11-05", 3, "day"), "2026-11-08");
@@ -99,4 +99,21 @@ test("subareas keep their own headings; a task keeps its subarea only with an ar
   });
   assert.deepEqual(n.lists[0].subs, [{ id: "p", name: "Rodeo", heads: [{ id: "k", name: "Landing" }] }]);
   assert.deepEqual([n.tasks[0].s, n.tasks[0].h, n.tasks[1].s], ["p", "k", undefined]);
+});
+
+test("spawnMissed: schedule repeats keep each missed date as its own task", () => {
+  const rep = { n: 1, unit: "day", mode: "schedule" };
+  const mk = () => [{ id: "a", text: "Floors", done: false, u: 5, date: "2026-11-12", rep, c: [{ id: "c", text: "s", done: true }] }];
+  const tasks = mk();
+  assert.equal(spawnMissed(tasks, {}, "2026-11-15"), true);
+  assert.deepEqual(tasks.map((t) => [t.id, t.date, !!t.rep]), [["a", "2026-11-15", true], ["a@2026-11-12", "2026-11-12", false], ["a@2026-11-13", "2026-11-13", false], ["a@2026-11-14", "2026-11-14", false]]);
+  assert.equal(tasks[0].u, 5); // the repeating task keeps its edit time
+  assert.equal(tasks[0].c[0].done, false); // fresh checklist
+  assert.equal(spawnMissed(tasks, {}, "2026-11-15"), false); // second run: nothing new
+  const t2 = mk(); // a deleted clone stays deleted
+  spawnMissed(t2, { "a@2026-11-13": 1 }, "2026-11-15");
+  assert.deepEqual(t2.map((t) => t.id), ["a", "a@2026-11-12", "a@2026-11-14"]);
+  const t3 = [{ id: "b", text: "x", done: false, u: 1, date: "2026-11-10", rep: { n: 1, unit: "day", mode: "after" } }]; // completion-based: untouched
+  assert.equal(spawnMissed(t3, {}, "2026-11-15"), false);
+  assert.equal(t3[0].date, "2026-11-10");
 });

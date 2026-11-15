@@ -72,6 +72,32 @@ export function nextDate(date, rep, now) {
   return addInterval(now, rep.n, rep.unit);
 }
 
+// Schedule-based repeats pile up: every slot that passed unfinished becomes its own one-off task (id "<task>@<date>"),
+// so the misses stay visible for you to finish or delete. The repeating task moves on to its first slot from today.
+// A clone's `u` is fixed to its date and the repeating task keeps its `u`, so a device that spawns late never beats an edit.
+// Clones are deterministic, so two devices make the same ones; a deleted clone stays deleted through `tomb`.
+// shortcut: at most the latest 30 misses per task, upgrade if a longer backlog matters.
+export function spawnMissed(tasks, tomb, now) {
+  let changed = false;
+  for (const t of [...tasks]) {
+    const r = t.rep;
+    if (!r || r.mode !== "schedule" || !t.date || t.date >= now) continue;
+    const miss = [];
+    let k = 0, d = t.date;
+    for (; d < now && k < 20000; ) { miss.push(d); d = addInterval(t.date, ++k * r.n, r.unit); }
+    for (const m of miss.slice(-30)) {
+      const id = `${t.id}@${m}`;
+      if (tomb[id] || tasks.some((x) => x.id === id)) continue;
+      const { rep, dt, ...rest } = t;
+      tasks.push({ ...rest, id, date: m, done: false, u: Date.parse(m) || 0, ...(t.c ? { c: t.c.map((c) => ({ ...c, done: false })) } : {}) });
+    }
+    t.date = d;
+    t.c?.forEach((c) => { c.done = false; });
+    changed = true;
+  }
+  return changed;
+}
+
 // "Today" covers overdue too: late tasks roll forward with no warning.
 export function whenLabel(t, now) {
   if (!t.date) return "";
