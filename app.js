@@ -169,7 +169,8 @@ function row(t, td) {
   w.setAttribute("aria-label", "Date and repeat");
   if (t.tm && !t.done && !past) w.prepend(svg("bell"));
   if (chip && view !== "today" && t.date <= td) w.prepend(svg("today")); // a star marks what is due today (or overdue); the Today view needs none // only while the reminder is still to come; a past one keeps its date and time
-  li.append(cb, body, ...(chip ? [w] : []), ...(ar ? [ar] : []), x);
+  if (ar) tx.after(ar); // the area follows the title, inline
+  li.append(cb, body, ...(chip ? [w] : []), x);
   return li;
 }
 const secRow = (text, ...kids) => {
