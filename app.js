@@ -166,7 +166,7 @@ function row(t, td) {
   w.setAttribute("aria-label", "Date and repeat");
   if (t.tm && !t.done && !past) w.prepend(svg("bell"));
   if (chip && view !== "today" && t.date <= td) w.prepend(svg("today")); // a star marks what is due today (or overdue); the Today view needs none // only while the reminder is still to come; a past one keeps its date and time
-  if (ar) tx.after(ar); // the area follows the title, inline
+  if (ar) tx.after(" ", ar); // a plain space: it collapses when the area wraps, so the wrapped line starts flush with the title // the area follows the title, inline
   const dl = !!t.dl && !t.done && Object.assign(document.createElement("button"), { type: "button", className: `when chip dl${t.dl <= td ? " over" : ""}`, title: "Deadline", textContent: `Due ${whenLabel({ date: t.dl }, td)}` });
   if (dl) { dl.setAttribute("aria-label", "Deadline"); dl.prepend(svg("flag")); }
   li.append(cb, body, ...(chip ? [w] : []), ...(dl ? [dl] : []), x);
