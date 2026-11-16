@@ -100,12 +100,21 @@ export function spawnMissed(tasks, tomb, now) {
   return changed;
 }
 
+// "This evening" lasts one day: a task that rolled over lands in plain Today. No `u` bump: every device does the same reset.
+export function resetEvening(tasks, now) {
+  let changed = false;
+  for (const t of tasks) if (t.ev && (!t.date || t.date < now)) { delete t.ev; changed = true; }
+  return changed;
+}
+
 // "Today" covers overdue too: late tasks roll forward with no warning.
 export function whenLabel(t, now) {
   if (!t.date) return "";
   const lead = t.rep ? "↻ " : "";
   const at = t.tm ? " " + t.tm : "";
-  if (t.date <= now) return lead + "Today" + at;
+  if (t.date <= now && !t.id?.includes("@")) return lead + "Today" + at; // overdue rolls over; only a missed repeat (id "<task>@<date>") keeps its own day
+  if (t.date === now) return lead + "Today" + at;
+  if (t.date === addDays(now, -1)) return lead + "Yesterday" + at;
   if (t.date === addDays(now, 1)) return lead + "Tomorrow" + at;
   const [, m, d] = parts(t.date);
   return `${lead}${DAYS[dow(t.date)]} ${d} ${MONTHS[m]}${at}`;

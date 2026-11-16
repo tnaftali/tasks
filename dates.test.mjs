@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { addDays, addInterval, nextDate, nextMonday, normalize, parseBackup, sig, spawnMissed, today, whenLabel } from "./logic.js";
+import { addDays, addInterval, nextDate, nextMonday, normalize, parseBackup, sig, spawnMissed, resetEvening, today, whenLabel } from "./logic.js";
 
 test("addInterval: days, weeks, months, years, month-end clamp, leap day", () => {
   assert.equal(addInterval("2026-11-05", 3, "day"), "2026-11-08");
@@ -27,10 +27,13 @@ test("nextMonday is always in the future", () => {
   assert.equal(nextMonday("2026-11-08"), "2026-11-09"); // Sun
 });
 
-test("whenLabel: overdue reads Today, no warning", () => {
+test("whenLabel: overdue reads Today, a missed repeat shows its day", () => {
   const now = "2026-11-05";
   assert.equal(whenLabel({}, now), "");
-  assert.equal(whenLabel({ date: "2026-01-01" }, now), "Today");
+  assert.equal(whenLabel({ date: "2026-11-05" }, now), "Today");
+  assert.equal(whenLabel({ date: "2026-11-04" }, now), "Today");
+  assert.equal(whenLabel({ id: "a@2026-11-04", date: "2026-11-04" }, now), "Yesterday");
+  assert.equal(whenLabel({ id: "a@2026-01-01", date: "2026-01-01" }, now), "Thu 1 Jan");
   assert.equal(whenLabel({ date: "2026-11-06" }, now), "Tomorrow");
   assert.equal(whenLabel({ date: "2026-11-10", rep: { n: 1, unit: "week", mode: "schedule" } }, now), "↻ Tue 10 Nov");
 });
@@ -125,4 +128,11 @@ test("deadline: kept without a date, bad values removed, shifts with a repeat", 
   const t = [{ id: "r", text: "z", done: false, u: 1, date: "2026-11-12", dl: "2026-11-14", rep: { n: 1, unit: "day", mode: "schedule" } }];
   spawnMissed(t, {}, "2026-11-14");
   assert.deepEqual(t.map((x) => [x.id, x.date, x.dl]), [["r", "2026-11-14", "2026-11-16"], ["r@2026-11-12", "2026-11-12", "2026-11-14"], ["r@2026-11-13", "2026-11-13", "2026-11-15"]]);
+});
+
+test("resetEvening: only a past day loses the evening flag", () => {
+  const t = [{ id: "a", ev: true, date: "2026-11-15" }, { id: "b", ev: true, date: "2026-11-16" }, { id: "c", ev: true, date: "2026-11-17" }];
+  assert.equal(resetEvening(t, "2026-11-16"), true);
+  assert.deepEqual(t.map((x) => !!x.ev), [false, true, true]);
+  assert.equal(resetEvening(t, "2026-11-16"), false);
 });

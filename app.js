@@ -1,4 +1,4 @@
-import { addDays, label, linkify, merge, move, newId, daysBetween, nextDate, nextMonday, normalize, spawnMissed, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
+import { addDays, label, linkify, merge, move, newId, daysBetween, nextDate, nextMonday, normalize, spawnMissed, resetEvening, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
 import { parseWhen } from "./nl.js";
 import { VAPID_PUBLIC, ackInbox, captureUrl, derive, newCode, parseCode, pullInbox, putReminders, sync } from "./sync.js";
 
@@ -160,7 +160,7 @@ function row(t, td) {
   }
   const past = !!t.tm && new Date(`${t.date}T${t.tm}`) <= new Date(); // a passed time is hidden; the task keeps it
   const shown = past ? { ...t, tm: undefined } : t;
-  const label = view === "today" && t.date <= td ? shown.tm ?? "" : whenLabel(shown, td); // in Today every due row would just say "Today", so show only its time
+  const label = view === "today" && (t.date === td || (t.date < td && !t.id.includes("@"))) ? shown.tm ?? "" : whenLabel(shown, td); // in Today every due row would just say "Today", so show only its time
   const chip = !!label && !t.done;
   const w = Object.assign(document.createElement("button"), { type: "button", className: "when chip", title: "Date and repeat", textContent: label });
   w.setAttribute("aria-label", "Date and repeat");
@@ -242,7 +242,7 @@ function renderAll(mine, td) {
 }
 let drawn = 0; // when the list was last drawn
 function render() {
-  if (spawnMissed(tasks, meta.tomb, today())) { save(); queue(); } // missed repeats become their own tasks
+  if (spawnMissed(tasks, meta.tomb, today()) | resetEvening(tasks, today())) { save(); queue(); } // missed repeats become their own tasks
   drawn = now();
   const td = (day = today());
   if (isArea() && !(cur() && (!vSub() || cur().subs.some((s) => s.id === vSub())))) view = "today"; // that area or subarea was deleted, here or on another device
