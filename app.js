@@ -1,6 +1,6 @@
-import { addDays, label, linkify, merge, move, newId, daysBetween, nextDate, nextMonday, normalize, spawnMissed, resetEvening, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
+import { addDays, label, linkFallback, linkify, merge, move, newId, daysBetween, nextDate, nextMonday, normalize, spawnMissed, resetEvening, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
 import { parseWhen } from "./nl.js";
-import { VAPID_PUBLIC, ackInbox, captureUrl, derive, newCode, parseCode, pullInbox, putReminders, sync } from "./sync.js";
+import { VAPID_PUBLIC, ackInbox, captureUrl, derive, fetchTitle, newCode, parseCode, pullInbox, putReminders, sync } from "./sync.js";
 
 const KEY = "braindump.tasks";
 const META = "braindump.meta"; // { tomb, ou, lists }: deleted ids, last reorder time and the named lists, all needed to merge
@@ -561,6 +561,7 @@ addEventListener("paste", (e) => {
   const t = { id: newId(), text: label(url), done: false, u: now(), n: url.slice(0, 5000), ...newPlace() }; // the label stays as the title until you type one: a task is never saved untitled
   tasks.unshift(t); commit(); openWhen(t, true);
   $("wtitle").value = ""; $("wtitle").focus();
+  upgradeTitles();
 });
 $("f").onsubmit = (e) => {
   e.preventDefault();
@@ -946,6 +947,21 @@ async function runSync() {
   }
 }
 
+// A task that is only a link (title = the link, link in the notes) gets the page's title. The link stays in the notes; a title you changed is never touched.
+const tried = new Set();
+async function upgradeTitles() {
+  const plain = (t) => !t.done && /^https?:\/\/\S+$/.test(t.n?.trim() ?? "") && [label(t.n.trim()), linkFallback(t.n.trim())].includes(t.text) && !tried.has(t.id);
+  for (const t0 of tasks.filter(plain)) {
+    if (wd.open && wid === t0.id) continue; // being edited: try again next time
+    tried.add(t0.id);
+    const url = t0.n.trim();
+    const title = (code ? await fetchTitle(code, url).catch(() => "") : "") || linkFallback(url);
+    const t = tasks.find((x) => x.id === t0.id);
+    if (!title || !t || t.text === title || ![label(url), linkFallback(url)].includes(t.text)) continue; // gone or edited meanwhile
+    t.text = title.slice(0, 500); touch(t); commit();
+  }
+}
+
 // Quick capture: text posted to the Worker inbox becomes an Inbox task. A bare link is the notes, titled by its host; other text is the title, extra lines the notes.
 // The item id is the task id, so a pull that is not acknowledged (offline) adds nothing twice.
 async function pullCaptures() {
@@ -958,6 +974,7 @@ async function pullCaptures() {
   }
   if (fresh.length) commit();
   await ackInbox(code, items.length);
+  upgradeTitles();
 }
 $("capc").onclick = async (e) => {
   try { $("capv").value = await captureUrl(code); $("capv").hidden = false; $("capv").select(); copy($("capv").value, e.target); }

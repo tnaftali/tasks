@@ -3,6 +3,16 @@ const URL_RE = /https?:\/\/[^\s<>"')\]]*[^\s<>"')\].,;:!?]/g; // trailing punctu
 
 export const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
+// A title for a link the Worker could not read (a login wall): the kind of page, from its address.
+export function linkFallback(u) {
+  try {
+    const x = new URL(u), host = x.hostname.replace(/^www\./, "");
+    if (host === "instagram.com") return { reel: "Instagram reel", reels: "Instagram reel", p: "Instagram post", tv: "Instagram video" }[x.pathname.split("/")[1]] ?? "";
+    if (host === "tiktok.com" || host === "vm.tiktok.com") return "TikTok video";
+  } catch {}
+  return "";
+}
+
 export function label(u) {
   try {
     const x = new URL(u), m = x.pathname.match(/^\/([^/]+\/[^/]+)\/(?:pull|issues)\/(\d+)/);

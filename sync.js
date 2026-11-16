@@ -47,6 +47,11 @@ export async function pullInbox(code) { // [{ id, text }]
   if (res.status !== 200) throw new Error(`inbox ${res.status}`);
   return res.json();
 }
+export async function fetchTitle(code, url) { // the page title, or "" when the Worker cannot read one
+  const { id, wk } = await derive(code);
+  const res = await fetch(`${API.replace(/b\/$/, "t/")}${id}?url=${encodeURIComponent(url)}`, { headers: { "X-Write-Key": wk } });
+  return res.status === 200 ? (await res.json()).title ?? "" : "";
+}
 export async function ackInbox(code, n) {
   const { id, wk } = await derive(code);
   await fetch(`${INBOX_API}${id}?n=${n}`, { method: "DELETE", headers: { "X-Write-Key": wk } });

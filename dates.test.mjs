@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { addDays, addInterval, nextDate, nextMonday, normalize, parseBackup, sig, spawnMissed, resetEvening, today, whenLabel } from "./logic.js";
+import { addDays, addInterval, nextDate, nextMonday, normalize, parseBackup, sig, spawnMissed, linkFallback, resetEvening, today, whenLabel } from "./logic.js";
 
 test("addInterval: days, weeks, months, years, month-end clamp, leap day", () => {
   assert.equal(addInterval("2026-11-05", 3, "day"), "2026-11-08");
@@ -135,4 +135,10 @@ test("resetEvening: only a past day loses the evening flag", () => {
   assert.equal(resetEvening(t, "2026-11-16"), true);
   assert.deepEqual(t.map((x) => !!x.ev), [false, true, true]);
   assert.equal(resetEvening(t, "2026-11-16"), false);
+});
+
+test("linkFallback: kind of page for a login-walled link", () => {
+  assert.equal(linkFallback("https://www.instagram.com/reel/Dfu55ekoKOM/"), "Instagram reel");
+  assert.equal(linkFallback("https://instagram.com/p/abc/"), "Instagram post");
+  assert.equal(linkFallback("https://example.com/x"), "");
 });

@@ -16,6 +16,39 @@ async function setNext(env, id, rem) {
   await env.BLOBS.put("idx", JSON.stringify(idx));
 }
 
+// Page titles: fetch like the link preview bot of a chat app (many sites, Instagram among them, serve Open Graph tags to it) and read og:title, twitter:title, then <title>.
+const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+const unent = (s) => s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => (e[0] === "#" ? String.fromCodePoint(e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : +e.slice(1)) : ENT[e.toLowerCase()] ?? m));
+const GENERIC = /^(instagram|tiktok|facebook|youtube)$|^(log ?in\b|sign ?in\b|just a moment|attention required|access denied|403|404|error)/i; // a login wall or error page, not a title
+export function titleOf(html) {
+  const metas = [...html.matchAll(/<meta\b[^>]*>/gi)].map((m) => m[0]);
+  const prop = (n) => {
+    for (const m of metas) {
+      if (!new RegExp(`(?:property|name)\\s*=\\s*["']${n}["']`, "i").test(m)) continue;
+      const c = m.match(/content\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+      if (c) return c[1] ?? c[2];
+    }
+  };
+  const t = prop("og:title") ?? prop("twitter:title") ?? html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "";
+  const s = unent(t).replace(/\s+/g, " ").trim().slice(0, 200);
+  return GENERIC.test(s) && s.length < 40 ? "" : s;
+}
+async function pageTitle(raw) {
+  let u;
+  try { u = new URL(raw); } catch { return ""; }
+  const h = u.hostname;
+  if (u.protocol !== "https:" || !h.includes(".") || /^[\d.]+$/.test(h) || h.includes(":") || /(^|\.)(local|localhost|internal|lan)$/i.test(h)) return ""; // public names only
+  try {
+    const res = await fetch(u, { headers: { "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)", Accept: "text/html" }, signal: AbortSignal.timeout(4000), redirect: "follow" });
+    if (!res.ok || !/text\/html/i.test(res.headers.get("Content-Type") ?? "")) return "";
+    const rd = res.body.getReader(), dec = new TextDecoder();
+    let html = "";
+    while (html.length < 128 * 1024) { const { done, value } = await rd.read(); if (done) break; html += dec.decode(value, { stream: true }); if (/<\/head>/i.test(html)) break; }
+    rd.cancel().catch(() => {});
+    return titleOf(html);
+  } catch { return ""; }
+}
+
 export default {
   async fetch(req, env) {
     const origin = req.headers.get("Origin");
@@ -31,6 +64,12 @@ export default {
     const reply = (body, status = 200, extra = {}) => new Response(body, { status, headers: { ...cors, ...extra } });
 
     if (req.method === "OPTIONS") return reply(null, 204);
+    const tm = new URL(req.url).pathname.match(/^\/t\/([0-9a-f]{64})$/);
+    if (tm) { // GET /t/<id>?url=: the title of a page, for a link the app captured. Only a holder of the sync code may ask, so this is not an open proxy.
+      const { metadata } = await env.BLOBS.getWithMetadata(tm[1]);
+      if (!metadata?.w || metadata.w !== req.headers.get("X-Write-Key")) return reply("forbidden", 403);
+      return reply(JSON.stringify({ title: await pageTitle(new URL(req.url).searchParams.get("url")) }), 200, { "Content-Type": "application/json" });
+    }
     const pm = new URL(req.url).pathname.match(/^\/p\/([0-9a-f]{64})$/);
     if (pm) { // PUT /p/<id>: this device's push subscription and the reminders due, replacing the old list
       if (req.method !== "PUT") return reply("method not allowed", 405);
