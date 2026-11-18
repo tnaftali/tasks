@@ -397,3 +397,17 @@ li .body > .area { display: inline; max-width: none; padding: 0; font-size: 13px
 @media (max-width: 600px) { #whend #wdlclear { height: 40px; } }
 
 .when.dl { border: 1px solid var(--border-strong); border-radius: 999px; }
+
+/* Right-click menu on a task: the sheet's quick date buttons and date/time fields, at the pointer. */
+#qm { position: fixed; z-index: 40; width: 232px; padding: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, .22); }
+#qm[hidden] { display: none; }
+#qm .quick { display: grid; gap: 2px; }
+#qm button { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; background: none; color: var(--text); border: 0; border-radius: 8px; font: 600 14px var(--sans); text-align: left; cursor: pointer; }
+#qm button:hover { background: var(--well); }
+#qm button[aria-pressed="true"] { color: var(--accent); }
+#qm button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#qm .when { display: flex; gap: 6px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+#qm input { min-width: 0; height: 36px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 0 8px; font: 14px var(--sans); }
+#qm input[type=date] { flex: 1; }
+#qm input[type=text] { width: 64px; }
+#qm input:focus { border-color: var(--accent); outline: none; }

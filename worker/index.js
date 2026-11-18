@@ -100,7 +100,7 @@ export default {
         text = text.trim();
         if (!text) return reply("empty", 400, open);
         if (items.length >= 100) return reply("inbox full", 429, open);
-        await env.BLOBS.put("q:" + id, JSON.stringify({ ck: q.ck, items: [...items, { id: crypto.randomUUID().replace(/-/g, "").slice(0, 16), text }] })); // shortcut: read-modify-write, two captures in the same instant can lose one
+        await env.BLOBS.put("q:" + id, JSON.stringify({ ck: q.ck, items: [...items, { id: crypto.randomUUID().replace(/-/g, "").slice(0, 16), text, ...(url.searchParams.get("to") === "today" ? { to: "today" } : {}) }] })); // shortcut: read-modify-write, two captures in the same instant can lose one
         return reply(null, 204, open);
       }
       const { metadata } = await env.BLOBS.getWithMetadata(id);

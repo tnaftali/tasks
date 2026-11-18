@@ -638,11 +638,12 @@ list.addEventListener("keydown", (e) => {
 // Date and repeat sheet. Every change applies at once; there is no save button.
 // Cancel (and Esc) puts the task back as it was when the sheet opened; a task made by pasting a link is removed. Done, Ctrl+Enter and a click outside keep the edits.
 let wid = null, wsnap = null, wnew = false, wdiscard = false;
-const wd = $("whend");
+const wd = $("whend"), qm = $("qm");
 function openWhen(t, isNew) { wid = t.id; wsnap = structuredClone(t); wnew = !!isNew; $("wtitle").value = t.text; fillWhen(t); $("wnote").value = t.n ?? ""; fillChecks(t); wd.showModal(); }
 function fillWhen(t) {
   $("wdate").value = t.date ?? "";
   $("wtime").value = t.tm ?? "";
+  $("qdate").value = t.date ?? ""; $("qtime").value = t.tm ?? "";
   $("wdl").value = t.dl ?? "";
   $("runit").value = t.rep?.unit ?? "";
   $("rn").value = t.rep?.n ?? 1;
@@ -651,7 +652,7 @@ function fillWhen(t) {
   $("wlist").value = placeName(t);
   const td = today(); // the shortcut that matches the task's date shows as pressed
   const on = { today: t.date === td && !t.ev, evening: t.date === td && !!t.ev, tomorrow: t.date === addDays(td, 1), monday: t.date === nextMonday(td), clear: !t.date };
-  wd.querySelectorAll("[data-d]").forEach((b) => b.setAttribute("aria-pressed", String(on[b.dataset.d])));
+  document.querySelectorAll("[data-d]").forEach((b) => b.setAttribute("aria-pressed", String(on[b.dataset.d])));
   wd.toggleAttribute("data-never", !t.rep);
   $("rhelp").textContent = t.rep ? (t.rep.mode === "after" ? "The next date counts from the day you complete it." : "Keeps its rhythm. A missed date stays as its own task until you finish or delete it.") : "";
 }
@@ -669,9 +670,10 @@ function applyWhen(date = $("wdate").value, ev) {
   touch(t); commit(); fillWhen(t);
 }
 const WICON = { today: "today", evening: "evening", tomorrow: "tomorrow", monday: "week", clear: "x" };
-wd.querySelectorAll("[data-d]").forEach((b) => {
+document.querySelectorAll("[data-d]").forEach((b) => { // the sheet's buttons and the right-click menu's
   b.prepend(svg(WICON[b.dataset.d]));
   b.onclick = () => {
+    if (!qm.hidden) qm.hidden = true;
     const k = b.dataset.d;
     if (k === "clear") { $("runit").value = ""; $("wtime").value = ""; return applyWhen(""); } // no date also drops the time and the repeat
     applyWhen({ today: today(), evening: today(), tomorrow: addDays(today(), 1), monday: nextMonday(today()) }[k], k === "evening" ? true : k === "today" ? false : undefined); // "Today" clears the evening flag, "Evening" sets it, the others keep it
@@ -684,6 +686,20 @@ $("wtime").onchange = () => {
   $("wtime").value = !s ? "" : m && +m[1] < 24 && +(m[2] ?? 0) < 60 ? `${m[1].padStart(2, "0")}:${m[2] ?? "00"}` : tasks.find((x) => x.id === wid)?.tm ?? "";
   applyWhen();
 };
+// Right-click a task: the sheet's date and time controls in a small menu at the pointer. It edits through the hidden sheet's fields, so both share applyWhen.
+list.addEventListener("contextmenu", (e) => {
+  const li = e.target.closest("li[data-id]"), t = li && tasks.find((x) => x.id === li.dataset.id);
+  if (!t || document.querySelector("dialog[open]")) return;
+  e.preventDefault();
+  wid = t.id; fillWhen(t);
+  qm.hidden = false;
+  qm.style.left = Math.max(8, Math.min(e.clientX, innerWidth - qm.offsetWidth - 8)) + "px";
+  qm.style.top = Math.max(8, Math.min(e.clientY, innerHeight - qm.offsetHeight - 8)) + "px";
+});
+document.addEventListener("pointerdown", (e) => { if (!qm.hidden && !qm.contains(e.target)) qm.hidden = true; });
+addEventListener("keydown", (e) => { if (e.key === "Escape" && !qm.hidden) { qm.hidden = true; e.stopPropagation(); } }, true);
+$("qdate").onchange = () => { $("wdate").value = $("qdate").value; qm.hidden = true; applyWhen(); };
+$("qtime").onchange = () => { $("wtime").value = $("qtime").value; qm.hidden = true; $("wtime").onchange(); };
 $("wtitle").oninput = () => { const v = $("wtitle").value.trim(); if (v) edited((t) => { t.text = v; }); }; // an empty title is not saved: the task keeps its old one
 // Notes and checklist. Edits save as you type; there is no save button.
 const edited = (fn) => { const t = tasks.find((x) => x.id === wid); if (t) { fn(t); touch(t); commit(); } return t; };
@@ -948,12 +964,12 @@ async function runSync() {
 }
 
 // A task that is only a link (title = the link, link in the notes) gets the page's title. The link stays in the notes; a title you changed is never touched.
-const tried = new Set();
+const tried = new Map(); // task id -> attempts: a slow or failing page is tried again on later syncs, three times at most
 async function upgradeTitles() {
-  const plain = (t) => !t.done && /^https?:\/\/\S+$/.test(t.n?.trim() ?? "") && [label(t.n.trim()), linkFallback(t.n.trim())].includes(t.text) && !tried.has(t.id);
+  const plain = (t) => !t.done && /^https?:\/\/\S+$/.test(t.n?.trim() ?? "") && [label(t.n.trim()), linkFallback(t.n.trim())].includes(t.text) && (tried.get(t.id) ?? 0) < 3;
   for (const t0 of tasks.filter(plain)) {
     if (wd.open && wid === t0.id) continue; // being edited: try again next time
-    tried.add(t0.id);
+    tried.set(t0.id, (tried.get(t0.id) ?? 0) + 1);
     const url = t0.n.trim();
     const title = (code ? await fetchTitle(code, url).catch(() => "") : "") || linkFallback(url);
     const t = tasks.find((x) => x.id === t0.id);
@@ -966,18 +982,18 @@ async function upgradeTitles() {
 // The item id is the task id, so a pull that is not acknowledged (offline) adds nothing twice.
 async function pullCaptures() {
   const items = await pullInbox(code);
-  if (!items.length) return;
+  if (!items.length) return upgradeTitles();
   const fresh = items.filter((i) => !tasks.some((t) => t.id === i.id));
   for (const i of fresh.reverse()) {
     const s = i.text.trim(), link = /^https?:\/\/\S+$/.test(s), [first, ...rest] = s.split("\n"), n = link ? s : rest.join("\n").trim();
-    tasks.unshift({ id: i.id, text: (link ? label(s) : first).slice(0, 500), done: false, u: now(), date: today(), ...(n ? { n: n.slice(0, 5000) } : {}) }); // due today, so a capture shows up in Today until you file it
+    tasks.unshift({ id: i.id, text: (link ? label(s) : first).slice(0, 500), done: false, u: now(), ...(i.to === "today" ? { date: today() } : {}), ...(n ? { n: n.slice(0, 5000) } : {}) }); // the Today URL dates it today; the Inbox URL leaves it undated, in the Inbox
   }
   if (fresh.length) commit();
   await ackInbox(code, items.length);
   upgradeTitles();
 }
-$("capc").onclick = async (e) => {
-  try { $("capv").value = await captureUrl(code); $("capv").hidden = false; $("capv").select(); copy($("capv").value, e.target); }
+for (const [id, to] of [["capc", ""], ["capt", "&to=today"]]) $(id).onclick = async (e) => {
+  try { $("capv").value = (await captureUrl(code)) + to; $("capv").hidden = false; $("capv").select(); copy($("capv").value, e.target); }
   catch (err) { $("st").textContent = `Capture URL failed: ${err.message}`; }
 };
 
@@ -1167,7 +1183,7 @@ addEventListener("keydown", (e) => {
     if (kd.open) return kd.close();
     kopen();
   }
-  const go = { Digit1: "inbox", Digit2: "today" }[e.code];
+  const go = { Digit1: "inbox", Digit2: "today", Digit3: "upcoming" }[e.code];
   if (go && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && !document.querySelector("dialog[open]")) { e.preventDefault(); setView(go); }
 });
 function kopen() {

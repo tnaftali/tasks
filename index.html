@@ -67,6 +67,19 @@
 </div>
 <button id="fab" type="button" aria-label="New task"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
 <div id="toast" role="status" hidden></div>
+<div id="qm" role="menu" aria-label="Quick date" hidden>
+  <div class="quick">
+    <button type="button" data-d="today">Today</button>
+    <button type="button" data-d="evening">Evening</button>
+    <button type="button" data-d="tomorrow">Tomorrow</button>
+    <button type="button" data-d="monday">Next week</button>
+    <button type="button" data-d="clear">No date</button>
+  </div>
+  <div class="when">
+    <input type="date" id="qdate" aria-label="Date">
+    <input type="text" id="qtime" aria-label="Time, 24-hour" placeholder="HH:MM" inputmode="numeric" maxlength="5" autocomplete="off">
+  </div>
+</div>
 <dialog id="whend" aria-labelledby="whent">
   <h2 id="whent">Task details</h2>
   <input id="wtitle" type="text" maxlength="500" autocomplete="off" placeholder="Title" aria-label="Task title">
@@ -156,8 +169,11 @@
     </div>
     <p id="remst" class="st" role="status"></p>
     <p class="sub">Quick capture</p>
-    <p>Send a link or text here from an iPhone Shortcut, a bookmarklet or curl. Post it to the capture URL. The URL can add tasks, not read them. They arrive on the next sync.</p>
-    <button id="capc" type="button">Show capture URL</button>
+    <p>Send a link or text here from an iPhone Shortcut, a bookmarklet or curl. Post it to the capture URL. The URL can add tasks, not read them. They arrive on the next sync. The Inbox URL files them in the Inbox. The Today URL puts them in Today.</p>
+    <div class="row">
+      <button id="capc" type="button">Inbox URL</button>
+      <button id="capt" type="button">Today URL</button>
+    </div>
     <input id="capv" readonly hidden aria-label="Capture URL" onfocus="this.select()">
     <p class="sub">On your other device: open the link, or open Settings → paste the code. On iPhone the installed app and Safari keep separate data, so join inside the app.</p>
     <button class="danger" id="offb" type="button">Turn off on this device</button>
