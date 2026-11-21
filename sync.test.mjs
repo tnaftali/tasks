@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { merge, normalize } from "./logic.js";
-import { newCode, parseCode, derive, encrypt, decrypt, sync, API, limits } from "./sync.js";
+import { newCode, parseCode, derive, encrypt, decrypt, sync, API, limits, relay } from "./sync.js";
+import { handle as relayHandle } from "./relay/main.js";
 import worker from "./worker/index.js";
 
 const T = (id, u, extra = {}) => ({ id, text: id, done: false, u, ...extra });
@@ -117,4 +118,40 @@ test("sync: a stalled request times out instead of hanging", async () => {
   try {
     await assert.rejects(sync(newCode(), S([])), /timed out/);
   } finally { globalThis.fetch = real; limits.ms = ms; }
+});
+
+test("sync: Worker blocked, the relay carries the sync and is used for a while", async () => {
+  const kv = fakeWorker(), toWorker = globalThis.fetch, R = "https://relay.example/b/";
+  const hits = { worker: 0, relay: 0 };
+  globalThis.fetch = (url, init) => {
+    if (url.startsWith(API)) { hits.worker++; return Promise.reject(new TypeError("Failed to fetch")); } // the ISP block
+    hits.relay++;
+    return relayHandle(new Request(url, init), (u, i) => toWorker(u.replace(/^.*\/b\//, API), i)); // relay -> Worker
+  };
+  relay.url = R; relay.until = 0;
+  try {
+    const out = await sync(newCode(), S([T("a", 1)]));
+    assert.equal(ids(out), "a");
+    assert.equal(kv.size, 1); // the blob reached the Worker's KV
+    assert.equal(hits.worker, 1); // tried once, then stuck to the relay
+    assert.equal(hits.relay, 2); // GET + PUT
+  } finally { globalThis.fetch = toWorker; relay.url = ""; relay.until = 0; }
+});
+
+test("sync: no relay set, a blocked Worker still fails the sync", async () => {
+  const real = globalThis.fetch;
+  globalThis.fetch = () => Promise.reject(new TypeError("Failed to fetch"));
+  try { await assert.rejects(sync(newCode(), S([])), /Failed to fetch/); } finally { globalThis.fetch = real; }
+});
+
+test("relay: only the task blob passes; inbox, titles and reminders do not", async () => {
+  const seen = [];
+  const up = async (u) => { seen.push(u); return new Response("ok", { status: 200, headers: { ETag: '"3"' } }); };
+  const id = "a".repeat(64), r = (p, m = "GET") => relayHandle(new Request("https://relay.example" + p, { method: m }), up);
+  for (const p of [`/i/${id}`, `/t/${id}`, `/p/${id}`, "/b/short", "/"]) assert.equal((await r(p)).status, 404);
+  assert.equal((await r(`/b/${id}`, "DELETE")).status, 405);
+  const ok = await r(`/b/${id}`);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get("ETag"), '"3"');
+  assert.deepEqual(seen, [`https://task-capture.tobias-naftali-337.workers.dev/b/${id}`]);
 });

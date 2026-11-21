@@ -68,6 +68,14 @@ Tap **Sync** → **Turn on sync**. The app makes a random 128-bit sync code. On 
 
 Deploy the Worker yourself: `cd worker && npx wrangler kv namespace create BLOBS`, put the id in `wrangler.toml`, then `npx wrangler deploy`. Set `API` in `sync.js` to your Worker URL and add your Pages origin to `ORIGINS` in `worker/index.js`.
 
+### Backup route (relay)
+
+On football match days Spanish ISPs block Cloudflare IPs, so the app can't reach the Worker ("Failed to fetch"). `relay/main.js` is a small server off Cloudflare that forwards task sync to the Worker. When the Worker is unreachable, the app retries through the relay and keeps using it for 10 minutes.
+
+- It passes only `/b/`, the encrypted task blob. Capture, link titles and reminders stay on the Worker and catch up after the block.
+- It sees what the Worker sees: an address, the write key and encrypted bytes. It cannot read your tasks.
+- Deploy: on dash.deno.com, create a project from this repo with entry point `relay/main.js`. Put its URL plus `/b/` in `relay.url` in `sync.js`, e.g. `https://your-project.deno.dev/b/`.
+
 ## Reminders (optional)
 
 Give a task a date and a time. Type it ("call Sam tomorrow 3pm") or use the time picker in the task sheet. With reminders on, the phone gets a notification at that time, even with the app closed. They need sync, and on iPhone the app must be opened from its Home Screen icon.

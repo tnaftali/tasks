@@ -4,6 +4,9 @@ import { merge, normalize, sig } from "./logic.js";
 
 export const API = "https://task-capture.tobias-naftali-337.workers.dev/b/";
 export const PUSH_API = API.replace(/b\/$/, "p/");
+// Backup route for task sync only (relay/main.js, off Cloudflare): used when the Worker is unreachable, e.g. Spanish ISPs
+// blocking Cloudflare during football matches. Empty = no relay. After a failure the relay is used for 10 minutes.
+export const relay = { url: "", until: 0 };
 export const VAPID_PUBLIC = "BM1hN6UAO61NsXgvAaIJwOVho1CCDvJ0RO9gBrfllkDNmONowgG0GYwd3chTCa9uzZAyMM2xaGd_6v7MxZKD1us"; // the Worker holds the private half (VAPID_JWK)
 const enc = new TextEncoder();
 
@@ -92,12 +95,24 @@ export async function putReminders(code, sub, rem, off = false) {
   return raw;
 }
 
+// The task blob: straight to the Worker, or through the relay when the Worker can't be reached.
+// net() throws only when no HTTP answer came (blocked, offline, timed out); an HTTP error is a real answer and is not retried.
+async function blob(id, opts) {
+  const viaRelay = () => net(relay.url + id, opts);
+  if (relay.url && Date.now() < relay.until) return viaRelay();
+  try { return await net(API + id, opts); } catch (e) {
+    if (!relay.url) throw e;
+    relay.until = Date.now() + 10 * 60e3;
+    return viaRelay();
+  }
+}
+
 // Pull, merge, push if the merge changed anything. Returns the merged side. Throws on failure.
 // A 412 means another device pushed first, so pull again and redo the merge.
 export async function sync(code, local) {
   const { id, wk, key } = await derive(code);
   for (let i = 0; i < 3; i++) {
-    const res = await net(API + id, { cache: "no-store" });
+    const res = await blob(id, { cache: "no-store" });
     let etag = '"0"', remote = null;
     if (res.status === 200) {
       etag = res.headers.get("ETag");
@@ -105,7 +120,7 @@ export async function sync(code, local) {
     } else if (res.status !== 404) throw new Error(`GET ${res.status}`);
     const state = remote ? merge(local, remote) : local;
     if (remote && sig(state) === sig(remote)) return state;
-    const put = await net(API + id, { method: "PUT", headers: { "If-Match": etag, "X-Write-Key": wk }, body: await encrypt(key, state) });
+    const put = await blob(id, { method: "PUT", headers: { "If-Match": etag, "X-Write-Key": wk }, body: await encrypt(key, state) });
     if (put.status === 204) return state;
     if (put.status !== 412) throw new Error(`PUT ${put.status}`);
   }
