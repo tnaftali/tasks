@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { merge, normalize } from "./logic.js";
-import { newCode, parseCode, derive, encrypt, decrypt, sync, API } from "./sync.js";
+import { newCode, parseCode, derive, encrypt, decrypt, sync, API, limits } from "./sync.js";
 import worker from "./worker/index.js";
 
 const T = (id, u, extra = {}) => ({ id, text: id, done: false, u, ...extra });
@@ -108,4 +108,13 @@ test("Worker: writes need the write key the first PUT stored", async () => {
   assert.equal((await put("e".repeat(64))).status, 403); // someone who only knows the address
   assert.equal((await put("d".repeat(64))).status, 204);
   assert.equal((await fetch(API + key)).status, 200); // reads stay open to anyone with the address
+});
+
+test("sync: a stalled request times out instead of hanging", async () => {
+  const real = globalThis.fetch, ms = limits.ms;
+  globalThis.fetch = (_url, { signal }) => new Promise((_, rej) => signal.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError"))));
+  limits.ms = 20;
+  try {
+    await assert.rejects(sync(newCode(), S([])), /timed out/);
+  } finally { globalThis.fetch = real; limits.ms = ms; }
 });

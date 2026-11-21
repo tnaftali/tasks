@@ -7,6 +7,17 @@ export const PUSH_API = API.replace(/b\/$/, "p/");
 export const VAPID_PUBLIC = "BM1hN6UAO61NsXgvAaIJwOVho1CCDvJ0RO9gBrfllkDNmONowgG0GYwd3chTCa9uzZAyMM2xaGd_6v7MxZKD1us"; // the Worker holds the private half (VAPID_JWK)
 const enc = new TextEncoder();
 
+// Every request gives up after limits.ms. Without this a stalled request (a phone waking from the background, a flaky network)
+// never settles, the app shows "Syncing…" forever and ignores later syncs. The abort also covers reading the body.
+export const limits = { ms: 15000 };
+const net = (url, opts = {}) => {
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), limits.ms);
+  return fetch(url, { ...opts, signal: ac.signal }).catch((e) => {
+    clearTimeout(t);
+    throw ac.signal.aborted ? new Error("timed out") : e;
+  });
+};
+
 const b64 = (u8) => {
   let s = "";
   for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000));
@@ -37,24 +48,24 @@ export async function derive(code) {
 export const INBOX_API = API.replace(/b\/$/, "i/");
 export async function captureUrl(code) {
   const { id, wk, ck } = await derive(code);
-  const res = await fetch(INBOX_API + id, { method: "PUT", headers: { "X-Write-Key": wk }, body: ck });
+  const res = await net(INBOX_API + id, { method: "PUT", headers: { "X-Write-Key": wk }, body: ck });
   if (res.status !== 204) throw new Error(`capture ${res.status}`);
   return `${INBOX_API}${id}?k=${ck}`;
 }
 export async function pullInbox(code) { // [{ id, text }]
   const { id, wk } = await derive(code);
-  const res = await fetch(INBOX_API + id, { headers: { "X-Write-Key": wk }, cache: "no-store" });
+  const res = await net(INBOX_API + id, { headers: { "X-Write-Key": wk }, cache: "no-store" });
   if (res.status !== 200) throw new Error(`inbox ${res.status}`);
   return res.json();
 }
 export async function fetchTitle(code, url) { // the page title, or "" when the Worker cannot read one
   const { id, wk } = await derive(code);
-  const res = await fetch(`${API.replace(/b\/$/, "t/")}${id}?url=${encodeURIComponent(url)}`, { headers: { "X-Write-Key": wk } });
+  const res = await net(`${API.replace(/b\/$/, "t/")}${id}?url=${encodeURIComponent(url)}`, { headers: { "X-Write-Key": wk } });
   return res.status === 200 ? (await res.json()).title ?? "" : "";
 }
 export async function ackInbox(code, n) {
   const { id, wk } = await derive(code);
-  await fetch(`${INBOX_API}${id}?n=${n}`, { method: "DELETE", headers: { "X-Write-Key": wk } });
+  await net(`${INBOX_API}${id}?n=${n}`, { method: "DELETE", headers: { "X-Write-Key": wk } });
 }
 
 export async function encrypt(key, obj) {
@@ -76,7 +87,7 @@ export async function decrypt(key, text) {
 export async function putReminders(code, sub, rem, off = false) {
   const { id, wk, key, raw } = await derive(code);
   const body = JSON.stringify({ sub, off, rem: await Promise.all(rem.map(async (r) => ({ k: r.k, at: r.at, b: await encrypt(key, { t: r.t.slice(0, 140), c: r.c?.slice(0, 140), v: r.v?.slice(0, 80) }) }))) });
-  const res = await fetch(PUSH_API + id, { method: "PUT", headers: { "X-Write-Key": wk }, body });
+  const res = await net(PUSH_API + id, { method: "PUT", headers: { "X-Write-Key": wk }, body });
   if (res.status !== 204) throw new Error(`reminders ${res.status}`);
   return raw;
 }
@@ -86,7 +97,7 @@ export async function putReminders(code, sub, rem, off = false) {
 export async function sync(code, local) {
   const { id, wk, key } = await derive(code);
   for (let i = 0; i < 3; i++) {
-    const res = await fetch(API + id, { cache: "no-store" });
+    const res = await net(API + id, { cache: "no-store" });
     let etag = '"0"', remote = null;
     if (res.status === 200) {
       etag = res.headers.get("ETag");
@@ -94,7 +105,7 @@ export async function sync(code, local) {
     } else if (res.status !== 404) throw new Error(`GET ${res.status}`);
     const state = remote ? merge(local, remote) : local;
     if (remote && sig(state) === sig(remote)) return state;
-    const put = await fetch(API + id, { method: "PUT", headers: { "If-Match": etag, "X-Write-Key": wk }, body: await encrypt(key, state) });
+    const put = await net(API + id, { method: "PUT", headers: { "If-Match": etag, "X-Write-Key": wk }, body: await encrypt(key, state) });
     if (put.status === 204) return state;
     if (put.status !== 412) throw new Error(`PUT ${put.status}`);
   }
