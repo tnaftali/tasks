@@ -70,11 +70,12 @@ Deploy the Worker yourself: `cd worker && npx wrangler kv namespace create BLOBS
 
 ### Backup route (relay)
 
-On football match days Spanish ISPs block Cloudflare IPs, so the app can't reach the Worker ("Failed to fetch"). `relay/main.js` is a small server off Cloudflare that forwards task sync to the Worker. When the Worker is unreachable, the app retries through the relay and keeps using it for 10 minutes.
+On football match days Spanish ISPs block Cloudflare IPs, so the app and the capture Shortcut can't reach the Worker. `relay/` is a small Vercel function, off Cloudflare, that forwards to the Worker.
 
-- It passes only `/b/`, the encrypted task blob. Capture, link titles and reminders stay on the Worker and catch up after the block.
-- It sees what the Worker sees: an address, the write key and encrypted bytes. It cannot read your tasks.
-- Deploy: on dash.deno.com, create a project from this repo with entry point `relay/main.js`. Put its URL plus `/b/` in `relay.url` in `sync.js`, e.g. `https://your-project.deno.dev/b/`.
+- The app tries the Worker first. If it can't connect, it goes through the relay and keeps using it for 10 minutes.
+- With a relay set, new capture URLs point at the relay, so a Shortcut keeps working during a block. Copy the capture URL again after setting it up.
+- It passes tasks (`/b/`, encrypted) and the capture inbox (`/i/`, plain text until the app pulls it). Link titles and reminders stay on the Worker.
+- Deploy: on vercel.com, import this repo with Root Directory `relay` and no build settings. Put the URL plus `/api` in `relay.url` in `sync.js`, e.g. `https://tasks-relay.vercel.app/api`.
 
 ## Reminders (optional)
 

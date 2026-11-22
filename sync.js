@@ -4,9 +4,21 @@ import { merge, normalize, sig } from "./logic.js";
 
 export const API = "https://task-capture.tobias-naftali-337.workers.dev/b/";
 export const PUSH_API = API.replace(/b\/$/, "p/");
-// Backup route for task sync only (relay/main.js, off Cloudflare): used when the Worker is unreachable, e.g. Spanish ISPs
-// blocking Cloudflare during football matches. Empty = no relay. After a failure the relay is used for 10 minutes.
+// Backup route (relay/main.js, on Vercel) for task sync and Quick Capture, used when the Worker is unreachable: Spanish ISPs
+// block Cloudflare during football (LaLiga). url is the relay base, e.g. "https://x.vercel.app/api"; empty = no relay.
+// After a failure the relay is used for 10 minutes.
 export const relay = { url: "", until: 0 };
+const WORKER = API.replace(/\/b\/$/, "");
+// net() throws only when no HTTP answer came (blocked, offline, timed out); an HTTP error is a real answer and is not retried.
+async function route(path, opts) {
+  const viaRelay = () => net(relay.url + path, opts);
+  if (relay.url && Date.now() < relay.until) return viaRelay();
+  try { return await net(WORKER + path, opts); } catch (e) {
+    if (!relay.url) throw e;
+    relay.until = Date.now() + 10 * 60e3;
+    return viaRelay();
+  }
+}
 export const VAPID_PUBLIC = "BM1hN6UAO61NsXgvAaIJwOVho1CCDvJ0RO9gBrfllkDNmONowgG0GYwd3chTCa9uzZAyMM2xaGd_6v7MxZKD1us"; // the Worker holds the private half (VAPID_JWK)
 const enc = new TextEncoder();
 
@@ -51,13 +63,13 @@ export async function derive(code) {
 export const INBOX_API = API.replace(/b\/$/, "i/");
 export async function captureUrl(code) {
   const { id, wk, ck } = await derive(code);
-  const res = await net(INBOX_API + id, { method: "PUT", headers: { "X-Write-Key": wk }, body: ck });
+  const res = await route("/i/" + id, { method: "PUT", headers: { "X-Write-Key": wk }, body: ck });
   if (res.status !== 204) throw new Error(`capture ${res.status}`);
-  return `${INBOX_API}${id}?k=${ck}`;
+  return `${relay.url ? relay.url + "/i/" : INBOX_API}${id}?k=${ck}`; // via the relay when there is one, so the Shortcut works during a block
 }
 export async function pullInbox(code) { // [{ id, text }]
   const { id, wk } = await derive(code);
-  const res = await net(INBOX_API + id, { headers: { "X-Write-Key": wk }, cache: "no-store" });
+  const res = await route("/i/" + id, { headers: { "X-Write-Key": wk }, cache: "no-store" });
   if (res.status !== 200) throw new Error(`inbox ${res.status}`);
   return res.json();
 }
@@ -68,7 +80,7 @@ export async function fetchTitle(code, url) { // the page title, or "" when the 
 }
 export async function ackInbox(code, n) {
   const { id, wk } = await derive(code);
-  await net(`${INBOX_API}${id}?n=${n}`, { method: "DELETE", headers: { "X-Write-Key": wk } });
+  await route(`/i/${id}?n=${n}`, { method: "DELETE", headers: { "X-Write-Key": wk } });
 }
 
 export async function encrypt(key, obj) {
@@ -95,24 +107,12 @@ export async function putReminders(code, sub, rem, off = false) {
   return raw;
 }
 
-// The task blob: straight to the Worker, or through the relay when the Worker can't be reached.
-// net() throws only when no HTTP answer came (blocked, offline, timed out); an HTTP error is a real answer and is not retried.
-async function blob(id, opts) {
-  const viaRelay = () => net(relay.url + id, opts);
-  if (relay.url && Date.now() < relay.until) return viaRelay();
-  try { return await net(API + id, opts); } catch (e) {
-    if (!relay.url) throw e;
-    relay.until = Date.now() + 10 * 60e3;
-    return viaRelay();
-  }
-}
-
 // Pull, merge, push if the merge changed anything. Returns the merged side. Throws on failure.
 // A 412 means another device pushed first, so pull again and redo the merge.
 export async function sync(code, local) {
   const { id, wk, key } = await derive(code);
   for (let i = 0; i < 3; i++) {
-    const res = await blob(id, { cache: "no-store" });
+    const res = await route("/b/" + id, { cache: "no-store" });
     let etag = '"0"', remote = null;
     if (res.status === 200) {
       etag = res.headers.get("ETag");
@@ -120,7 +120,7 @@ export async function sync(code, local) {
     } else if (res.status !== 404) throw new Error(`GET ${res.status}`);
     const state = remote ? merge(local, remote) : local;
     if (remote && sig(state) === sig(remote)) return state;
-    const put = await blob(id, { method: "PUT", headers: { "If-Match": etag, "X-Write-Key": wk }, body: await encrypt(key, state) });
+    const put = await route("/b/" + id, { method: "PUT", headers: { "If-Match": etag, "X-Write-Key": wk }, body: await encrypt(key, state) });
     if (put.status === 204) return state;
     if (put.status !== 412) throw new Error(`PUT ${put.status}`);
   }

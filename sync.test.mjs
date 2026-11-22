@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { merge, normalize } from "./logic.js";
-import { newCode, parseCode, derive, encrypt, decrypt, sync, API, limits, relay } from "./sync.js";
+import { newCode, parseCode, derive, encrypt, decrypt, sync, API, limits, relay, captureUrl, pullInbox } from "./sync.js";
 import { handle as relayHandle } from "./relay/main.js";
 import worker from "./worker/index.js";
 
@@ -59,7 +59,8 @@ function fakeWorker() {
   const env = {
     BLOBS: {
       async getWithMetadata(k) { const e = kv.get(k); return e ? { value: e.value, metadata: e.metadata } : { value: null, metadata: null }; },
-      async put(k, value, { metadata }) { kv.set(k, { value, metadata }); },
+      async get(k) { return kv.get(k)?.value ?? null; },
+      async put(k, value, opts) { kv.set(k, { value, metadata: opts?.metadata }); },
     },
   };
   globalThis.fetch = (url, init) => worker.fetch(new Request(url, init), env);
@@ -121,12 +122,12 @@ test("sync: a stalled request times out instead of hanging", async () => {
 });
 
 test("sync: Worker blocked, the relay carries the sync and is used for a while", async () => {
-  const kv = fakeWorker(), toWorker = globalThis.fetch, R = "https://relay.example/b/";
+  const kv = fakeWorker(), toWorker = globalThis.fetch, R = "https://relay.example/api";
   const hits = { worker: 0, relay: 0 };
   globalThis.fetch = (url, init) => {
     if (url.startsWith(API)) { hits.worker++; return Promise.reject(new TypeError("Failed to fetch")); } // the ISP block
     hits.relay++;
-    return relayHandle(new Request(url, init), (u, i) => toWorker(u.replace(/^.*\/b\//, API), i)); // relay -> Worker
+    return relayHandle(new Request(url, init), toWorker, "/api"); // relay -> Worker
   };
   relay.url = R; relay.until = 0;
   try {
@@ -144,14 +145,31 @@ test("sync: no relay set, a blocked Worker still fails the sync", async () => {
   try { await assert.rejects(sync(newCode(), S([])), /Failed to fetch/); } finally { globalThis.fetch = real; }
 });
 
-test("relay: only the task blob passes; inbox, titles and reminders do not", async () => {
+test("relay: passes tasks and capture with the Worker's answer; not titles or reminders", async () => {
   const seen = [];
-  const up = async (u) => { seen.push(u); return new Response("ok", { status: 200, headers: { ETag: '"3"' } }); };
-  const id = "a".repeat(64), r = (p, m = "GET") => relayHandle(new Request("https://relay.example" + p, { method: m }), up);
-  for (const p of [`/i/${id}`, `/t/${id}`, `/p/${id}`, "/b/short", "/"]) assert.equal((await r(p)).status, 404);
+  const up = async (u, i) => { seen.push(`${i.method} ${u}`); return new Response("ok", { status: 200, headers: { ETag: '"3"', "Access-Control-Allow-Origin": "*" } }); };
+  const id = "a".repeat(64), r = (p, m = "GET") => relayHandle(new Request("https://relay.example/api" + p, { method: m, ...(m === "POST" ? { body: "x" } : {}) }), up, "/api");
+  for (const p of [`/t/${id}`, `/p/${id}`, "/b/short", "/"]) assert.equal((await r(p)).status, 404);
   assert.equal((await r(`/b/${id}`, "DELETE")).status, 405);
   const ok = await r(`/b/${id}`);
   assert.equal(ok.status, 200);
   assert.equal(ok.headers.get("ETag"), '"3"');
-  assert.deepEqual(seen, [`https://task-capture.tobias-naftali-337.workers.dev/b/${id}`]);
+  assert.equal(ok.headers.get("Access-Control-Allow-Origin"), "*");
+  assert.equal((await r(`/i/${id}?k=abc&to=today`, "POST")).status, 200);
+  assert.deepEqual(seen, [`GET https://task-capture.tobias-naftali-337.workers.dev/b/${id}`, `POST https://task-capture.tobias-naftali-337.workers.dev/i/${id}?k=abc&to=today`]);
+});
+
+test("capture: the Shortcut URL points at the relay, and a capture posted there reaches the app", async () => {
+  fakeWorker();
+  const toWorker = globalThis.fetch, R = "https://relay.example/api";
+  globalThis.fetch = (url, init) => (url.startsWith(R) ? relayHandle(new Request(url, init), toWorker, "/api") : toWorker(url, init));
+  relay.url = R; relay.until = 0;
+  try {
+    const code = newCode();
+    await sync(code, S([])); // sync on: the write key is stored
+    const url = await captureUrl(code);
+    assert.ok(url.startsWith(R + "/i/"));
+    assert.equal((await fetch(url, { method: "POST", body: "dentist friday 10am" })).status, 204);
+    assert.deepEqual((await pullInbox(code)).map((i) => i.text), ["dentist friday 10am"]);
+  } finally { globalThis.fetch = toWorker; relay.url = ""; relay.until = 0; }
 });
