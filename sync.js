@@ -7,7 +7,7 @@ export const PUSH_API = API.replace(/b\/$/, "p/");
 // Backup route (relay/main.js, on Vercel) for task sync and Quick Capture, used when the Worker is unreachable: Spanish ISPs
 // block Cloudflare during football (LaLiga). url is the relay base, e.g. "https://x.vercel.app/api"; empty = no relay.
 // After a failure the relay is used for 10 minutes.
-export const relay = { url: "", until: 0 };
+export const relay = { url: "https://tasks-relay-one.vercel.app/api", until: 0 };
 const WORKER = API.replace(/\/b\/$/, "");
 // net() throws only when no HTTP answer came (blocked, offline, timed out); an HTTP error is a real answer and is not retried.
 async function route(path, opts) {

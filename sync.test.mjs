@@ -141,8 +141,9 @@ test("sync: Worker blocked, the relay carries the sync and is used for a while",
 
 test("sync: no relay set, a blocked Worker still fails the sync", async () => {
   const real = globalThis.fetch;
+  const url = relay.url; relay.url = ""; relay.until = 0;
   globalThis.fetch = () => Promise.reject(new TypeError("Failed to fetch"));
-  try { await assert.rejects(sync(newCode(), S([])), /Failed to fetch/); } finally { globalThis.fetch = real; }
+  try { await assert.rejects(sync(newCode(), S([])), /Failed to fetch/); } finally { globalThis.fetch = real; relay.url = url; }
 });
 
 test("relay: passes tasks and capture with the Worker's answer; not titles or reminders", async () => {
