@@ -1,6 +1,6 @@
 // Natural-language date and time at the END of a task: "call Sam tomorrow 3pm" -> text "call Sam", date, tm.
 // Pure, no DOM. shortcut: English only, only phrases at the end of the text; upgrade to chrono-node for more.
-import { addDays, addInterval, nextMonday, today } from "./logic.js";
+import { addDays, addInterval, label, nextMonday, today } from "./logic.js";
 
 const WEEKDAY = "sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tues?|wed|thu(?:rs?)?|fri|sat";
 const MONTH = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
@@ -56,4 +56,14 @@ export function parseWhen(input, now = new Date()) {
   if (!text || !(out.date || out.tm)) return { text: input.trim() }; // nothing found, or nothing left of the task
   if (out.tm && !out.date) out.date = out.tm > `${pad(now.getHours())}:${pad(now.getMinutes())}` ? ctx.td : addDays(ctx.td, 1); // a time already past means tomorrow
   return { text, ...out };
+}
+
+// A Quick Capture item ({ id, text, to?, at? }) as a task, read like text typed in the app: "call Sam tomorrow 3pm" gets the date and time.
+// The first line is the title, extra lines the notes. A bare link is the notes, titled by its host. Dates count from `at` (when it was
+// captured) if the Worker sent it, so "tomorrow" stays right when the app pulls it a day later. The Today URL dates it today unless the text names a day.
+export function fromCapture(i, now = new Date()) {
+  const s = i.text.trim(), link = /^https?:\/\/\S+$/.test(s), [first, ...rest] = s.split("\n"), n = link ? s : rest.join("\n").trim();
+  const at = Number.isFinite(i.at) ? new Date(i.at) : now;
+  const { text, ...when } = link ? { text: label(s) } : parseWhen(first, at);
+  return { id: i.id, text: text.slice(0, 500), done: false, ...(i.to === "today" && !when.date ? { date: today(at) } : {}), ...when, ...(n ? { n: n.slice(0, 5000) } : {}) };
 }

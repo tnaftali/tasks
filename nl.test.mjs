@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseWhen } from "./nl.js";
+import { fromCapture, parseWhen } from "./nl.js";
 
 const NOW = new Date(2026, 10, 10, 15, 0); // Tue 10 Nov 2026, 15:00 local
 const p = (s) => parseWhen(s, NOW);
@@ -41,4 +41,26 @@ test("parseWhen: leaves plain text alone", () => {
   assert.deepEqual(p("buy milk"), { text: "buy milk" });
   assert.deepEqual(p("tomorrow"), { text: "tomorrow" }); // nothing would be left of the task
   assert.deepEqual(p("may the force"), { text: "may the force" });
+});
+
+test("fromCapture: dates in captured text work as in the app", () => {
+  assert.deepEqual(fromCapture({ id: "a", text: "call Sam tomorrow 3pm" }, NOW), { id: "a", text: "call Sam", done: false, date: "2026-11-11", tm: "15:00" });
+  assert.deepEqual(fromCapture({ id: "b", text: "buy milk" }, NOW), { id: "b", text: "buy milk", done: false }); // no date: stays in the Inbox
+});
+
+test("fromCapture: dates count from the capture time, not the pull", () => {
+  const at = new Date(2026, 10, 9, 20, 0).getTime(); // captured Mon evening, pulled Tue
+  assert.equal(fromCapture({ id: "a", text: "gym tomorrow", at }, NOW).date, "2026-11-10");
+});
+
+test("fromCapture: Today URL dates it today unless the text names a day", () => {
+  assert.equal(fromCapture({ id: "a", text: "pay rent", to: "today" }, NOW).date, "2026-11-10");
+  assert.equal(fromCapture({ id: "b", text: "pay rent fri", to: "today" }, NOW).date, "2026-11-13");
+});
+
+test("fromCapture: date on the first line, extra lines are notes; links untouched", () => {
+  assert.deepEqual(fromCapture({ id: "a", text: "call Sam tomorrow\nask about the trip" }, NOW), { id: "a", text: "call Sam", done: false, date: "2026-11-11", n: "ask about the trip" });
+  const l = fromCapture({ id: "b", text: "https://example.com/tomorrow" }, NOW);
+  assert.equal(l.date, undefined);
+  assert.equal(l.n, "https://example.com/tomorrow");
 });

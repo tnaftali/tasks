@@ -1,5 +1,5 @@
 import { addDays, label, linkFallback, linkify, merge, move, newId, daysBetween, nextDate, nextMonday, normalize, spawnMissed, resetEvening, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
-import { parseWhen } from "./nl.js";
+import { fromCapture, parseWhen } from "./nl.js";
 import { VAPID_PUBLIC, ackInbox, captureUrl, derive, fetchTitle, newCode, parseCode, pullInbox, putReminders, sync } from "./sync.js";
 
 const KEY = "braindump.tasks";
@@ -978,16 +978,13 @@ async function upgradeTitles() {
   }
 }
 
-// Quick capture: text posted to the Worker inbox becomes an Inbox task. A bare link is the notes, titled by its host; other text is the title, extra lines the notes.
+// Quick capture: text posted to the Worker inbox becomes a task, read like text typed in the app (fromCapture in nl.js).
 // The item id is the task id, so a pull that is not acknowledged (offline) adds nothing twice.
 async function pullCaptures() {
   const items = await pullInbox(code);
   if (!items.length) return upgradeTitles();
   const fresh = items.filter((i) => !tasks.some((t) => t.id === i.id));
-  for (const i of fresh.reverse()) {
-    const s = i.text.trim(), link = /^https?:\/\/\S+$/.test(s), [first, ...rest] = s.split("\n"), n = link ? s : rest.join("\n").trim();
-    tasks.unshift({ id: i.id, text: (link ? label(s) : first).slice(0, 500), done: false, u: now(), ...(i.to === "today" ? { date: today() } : {}), ...(n ? { n: n.slice(0, 5000) } : {}) }); // the Today URL dates it today; the Inbox URL leaves it undated, in the Inbox
-  }
+  for (const i of fresh.reverse()) tasks.unshift({ ...fromCapture(i), u: now() }); // dates in the text work as in the app; see nl.js
   if (fresh.length) commit();
   await ackInbox(code, items.length);
   upgradeTitles();
