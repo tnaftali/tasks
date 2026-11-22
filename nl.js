@@ -14,6 +14,7 @@ const dow = (s) => new Date(s + "T00:00").getDay();
 const RULES = [
   [/(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?/, (m) => (m[1] >= 1 && m[1] <= 12 ? { tm: hm((m[1] % 12) + (m[3].toLowerCase() === "p" ? 12 : 0), +(m[2] ?? 0)) } : null)],
   [/(\d{1,2}):(\d{2})/, (m) => ({ tm: hm(+m[1], +m[2]) })],
+  [/at\s+(\d{1,2})/, (m) => { const h = +m[1]; return h <= 23 ? { tm: hm(h >= 1 && h <= 6 ? h + 12 : h, 0) } : null; }], // "at 11": a bare hour needs "at"; 1-6 means afternoon, as people mean "at 3"
   [/noon/, () => ({ tm: "12:00" })],
   [/in\s+(\d+)\s*(min(?:ute)?s?|h(?:ou)?rs?|h)/, (m, c) => { // "in 2 hours": a date and a time from now
     const d = new Date(c.now.getTime() + m[1] * (m[2][0] === "m" ? 6e4 : 36e5));

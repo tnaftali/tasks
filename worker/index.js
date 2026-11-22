@@ -63,6 +63,8 @@ export default {
     };
     const reply = (body, status = 200, extra = {}) => new Response(body, { status, headers: { ...cors, ...extra } });
 
+    if (req.method === "OPTIONS" && /^\/i\//.test(new URL(req.url).pathname) && !ORIGINS.includes(origin)) // capture from any page (bookmarklet, JSON)
+      return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "86400" } });
     if (req.method === "OPTIONS") return reply(null, 204);
     const tm = new URL(req.url).pathname.match(/^\/t\/([0-9a-f]{64})$/);
     if (tm) { // GET /t/<id>?url=: the title of a page, for a link the app captured. Only a holder of the sync code may ask, so this is not an open proxy.

@@ -160,6 +160,19 @@ test("relay: passes tasks and capture with the Worker's answer; not titles or re
   assert.deepEqual(seen, [`GET https://task-capture.tobias-naftali-337.workers.dev/b/${id}`, `POST https://task-capture.tobias-naftali-337.workers.dev/i/${id}?k=abc&to=today`]);
 });
 
+test("capture preflight: any page may POST JSON; the app's own preflight still gets the Worker's answer", async () => {
+  fakeWorker();
+  const toWorker = globalThis.fetch, id = "a".repeat(64);
+  const pre = (o) => new Request(`https://relay.example/api/i/${id}`, { method: "OPTIONS", headers: { Origin: o, "Access-Control-Request-Method": "PUT", "Access-Control-Request-Headers": "x-write-key" } });
+  const page = await relayHandle(pre("https://news.example"), toWorker, "/api");
+  assert.equal(page.headers.get("Access-Control-Allow-Origin"), "*");
+  const app = await relayHandle(pre("https://tnaftali.github.io"), toWorker, "/api");
+  assert.equal(app.headers.get("Access-Control-Allow-Origin"), "https://tnaftali.github.io");
+  assert.match(app.headers.get("Access-Control-Allow-Headers"), /X-Write-Key/);
+  const direct = await toWorker(API.replace(/b\/$/, "i/") + id, { method: "OPTIONS", headers: { Origin: "https://news.example" } });
+  assert.equal(direct.headers.get("Access-Control-Allow-Origin"), "*"); // the Worker answers the same
+});
+
 test("capture: the Shortcut URL points at the relay, and a capture posted there reaches the app", async () => {
   fakeWorker();
   const toWorker = globalThis.fetch, R = "https://relay.example/api";

@@ -64,3 +64,11 @@ test("fromCapture: date on the first line, extra lines are notes; links untouche
   assert.equal(l.date, undefined);
   assert.equal(l.n, "https://example.com/tomorrow");
 });
+
+test("parseWhen: a bare hour after 'at'", () => {
+  assert.deepEqual(p("something wednesday at 11"), { text: "something", date: "2026-11-11", tm: "11:00" });
+  assert.deepEqual(p("call mom tomorrow at 3"), { text: "call mom", date: "2026-11-11", tm: "15:00" }); // 1-6: afternoon
+  assert.deepEqual(p("gym fri at 7"), { text: "gym", date: "2026-11-13", tm: "07:00" });
+  assert.deepEqual(p("room 11"), { text: "room 11" }); // no "at": not a time
+  assert.equal(fromCapture({ id: "a", text: "something wednesday at 11", to: "today" }, NOW).date, "2026-11-11"); // the named day beats the Today URL
+});
