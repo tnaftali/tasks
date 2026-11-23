@@ -157,7 +157,7 @@ function row(t, td) {
   let ar = null; // the area (and subarea) sits at the top right of the row; a tap opens that area, the details sheet re-files the task
   if (!isArea() && view !== "board" && view !== "all" && areaOf(t)) {
     const { l, sa } = placeOf(t);
-    ar = Object.assign(document.createElement("button"), { type: "button", className: "area", title: "Open this area", textContent: sa ? `${l.name} › ${sa.name}` : l.name });
+    ar = Object.assign(document.createElement("button"), { type: "button", className: "area", title: "Open this area", textContent: sa ? (view === "week" ? sa.name : `${l.name} › ${sa.name}`) : l.name }); // the week's narrow columns show just the project
   }
   const past = !!t.tm && new Date(`${t.date}T${t.tm}`) <= new Date(); // a passed time is hidden; the task keeps it
   const shown = past ? { ...t, tm: undefined } : t;
@@ -188,7 +188,7 @@ const btn = (text, cls, fn, title) => Object.assign(document.createElement("butt
 
 // ---- Week ----
 // Monday to Sunday side by side (Sat and Sun share a column): each day's events, a line, then its tasks on ruled lines.
-// Type on a day's first free line to add a task to that day. Drag tasks between days, within a day, or to and from the Inbox below.
+// Add with the box on top (today, or that week's Monday; "fri" or "tomorrow" in the text picks the day). Drag tasks between days, within a day, or to and from the Inbox below.
 let wkOff = 0; // weeks from this one; per session
 const mondayOf = (d) => addDays(d, -((new Date(d + "T00:00").getDay() + 6) % 7));
 const isoWeek = (d) => { const x = new Date(d + "T00:00"); x.setDate(x.getDate() + 3 - ((x.getDay() + 6) % 7)); const y = new Date(x.getFullYear(), 0, 4); return 1 + Math.round(((x - y) / 864e5 - 3 + ((y.getDay() + 6) % 7)) / 7); };
@@ -197,23 +197,6 @@ function weekTitle() {
   const narrow = matchMedia("(max-width: 600px)").matches; // a phone header has room for "Nov 2026", not "November 2026"
   return mon.slice(0, 7) === sun.slice(0, 7) ? m(mon, { month: narrow ? "short" : "long", year: "numeric" }) : `${m(mon, { month: "short" })} – ${m(sun, { month: "short", ...(narrow ? {} : { year: "numeric" }) })}`;
 }
-const wkAdd = (d) => { // the "Add a task" line of a day (or of the Inbox, d = "")
-  const li = Object.assign(document.createElement("li"), { className: "wline wadd" });
-  const inp = Object.assign(document.createElement("input"), { type: "text", placeholder: "Add a task", maxLength: 500, autocomplete: "off", enterKeyHint: "done" });
-  inp.setAttribute("aria-label", d ? `Add a task on ${whenLabel({ date: d }, today())}` : "Add a task to the Inbox");
-  inp.dataset.day = d;
-  inp.onkeydown = (e) => {
-    const typed = inp.value.trim();
-    if (e.key === "Escape") { inp.value = ""; inp.blur(); }
-    if (e.key !== "Enter" || !typed) return;
-    const { text, ...when } = d ? parseOn(typed, d) : parseWhen(typed); // "call Sam 3pm" keeps the time on this day; a named day wins over the column
-    tasks.unshift({ id: newId(), text, done: false, u: now(), ...when });
-    commit();
-    list.querySelector(`.wadd input[data-day="${d}"]`)?.focus();
-  };
-  li.append(inp);
-  return li;
-};
 function renderWeek(td) {
   const mon = addDays(mondayOf(td), 7 * wkOff), days = Array.from({ length: 7 }, (_, i) => addDays(mon, i)), end = days[6];
   const bar = Object.assign(document.createElement("li"), { className: "wbar" });
@@ -243,9 +226,8 @@ function renderWeek(td) {
     }
     const ul = Object.assign(document.createElement("ul"), { className: "wtasks" });
     ul.dataset.drop = d;
-    ul.append(...mine.map((t) => row(t, td)), wkAdd(d));
-    const we = [5, 6].includes((dt.getDay() + 6) % 7), fill = Math.max(0, (we ? 3 : 7) - mine.length - 1); // ruled lines down to an even height
-    for (let i = 0; i < fill; i++) { const f = Object.assign(document.createElement("li"), { className: "wline wfill" }); f.onclick = () => ul.querySelector(".wadd input").focus(); ul.append(f); }
+    ul.append(...mine.map((t) => row(t, td))); // an empty day is still a drop target (min-height in style.css)
+    const we = [5, 6].includes((dt.getDay() + 6) % 7);
     c.append(ul);
     if (we) c.classList.add("we");
     return c;
@@ -258,12 +240,11 @@ function renderWeek(td) {
   const sect = (name, items, drop, add) => {
     const s = Object.assign(document.createElement("div"), { className: "wsect" }), ul = Object.assign(document.createElement("ul"), { className: "wtasks" });
     if (drop !== null) ul.dataset.drop = drop;
-    ul.append(...items.map((t) => row(t, td)), ...(add ? [wkAdd("")] : []));
+    ul.append(...items.map((t) => row(t, td)));
     s.append(Object.assign(document.createElement("h3"), { textContent: name }), ul);
     return s;
   };
-  const later = tasks.filter((t) => !t.done && t.date > end).sort(byDate).slice(0, 8);
-  below.append(sect("Inbox · no date", tasks.filter((t) => !t.done && !t.date && !areaOf(t)), "", true), sect("Later", later, null, false));
+  below.append(sect("Inbox · no date", tasks.filter((t) => !t.done && !t.date && !areaOf(t)), "", true));
   list.append(bar, grid, below);
 }
 // Week drag: its own, since a task moves across columns. Mouse: after 6px. Touch: hold 300 ms, so swiping still scrolls.
@@ -303,7 +284,7 @@ list.addEventListener("pointermove", (e) => {
   if (zone) {
     const rows = [...zone.querySelectorAll(":scope > li[data-id]")].filter((x) => x !== d.li);
     d.before = rows.find((x) => { const r = x.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; }) ?? null;
-    (d.before ?? zone.querySelector(".wadd")).classList.add(d.before ? "wover" : "wover-end");
+    (d.before ?? zone).classList.add(d.before ? "wover" : "wover-end");
   }
   if (e.clientY < 70) scrollBy(0, -10); else if (e.clientY > innerHeight - 70) scrollBy(0, 10);
 });
@@ -518,7 +499,7 @@ const ICON = { // 24px stroke icons, drawn by style.css
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   all: '<rect x="4" y="10" width="16" height="10" rx="2.500"/><path d="M7 5.500h10"/>',
   task: '<circle cx="12" cy="12" r="7.5"/>',
-  week: '<rect x="3.500" y="5" width="17" height="15" rx="2"/><path class="cut" d="M3.500 10h17"/><path d="M9.200 10v10M14.800 10v10"/>',
+  week: '<rect x="4" y="5" width="16" height="15" rx="2.500"/><path class="cut" d="M4 10.500h16M9.300 10.500V20M14.700 10.500V20"/><path d="M9 3v4M15 3v4"/>',
   board: '<rect x="4" y="4" width="4" height="15" rx="1"/><rect x="10" y="4" width="4" height="9" rx="1"/><rect x="16" y="4" width="4" height="12" rx="1"/>',
   flag: '<path d="M6 21V4M6 5h11l-2 4 2 4H6"/>',
   chev: '<path d="M9 6l6 6-6 6"/>', // points right; .open turns it down
@@ -710,7 +691,7 @@ document.addEventListener("keydown", (e) => { // capture: while the popup is ope
   e.preventDefault(); e.stopPropagation();
 }, true);
 pk.onclick = () => { setPick(null); nin.focus(); };
-const newPlace = () => (view === "today" ? { date: today() } : view === "upcoming" ? { date: addDays(today(), 1) } : isArea() ? { l: vArea(), ...(vSub() ? { s: vSub() } : {}) } : {});
+const newPlace = () => (view === "today" ? { date: today() } : view === "week" ? { date: wkOff ? addDays(mondayOf(today()), 7 * wkOff) : today() } : view === "upcoming" ? { date: addDays(today(), 1) } : isArea() ? { l: vArea(), ...(vSub() ? { s: vSub() } : {}) } : {});
 // Paste a link anywhere outside a text field: a new task with the link in its notes, and its sheet opens on the title.
 addEventListener("paste", (e) => {
   if (e.target.closest?.("input, textarea, [contenteditable]") || document.querySelector("dialog[open]")) return;

@@ -7,7 +7,7 @@
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
   --title: system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "JetBrains Mono", monospace;
-  --c-inbox: #3f78ee; --c-today: #e3a008; --c-upcoming: #e04860; --c-all: #1f9d8f; --c-board: #9a7cf0; --c-done: #2f9e5f;
+  --c-inbox: #3f78ee; --c-today: #e3a008; --c-upcoming: #e04860; --c-all: #1f9d8f; --c-board: #9a7cf0; --c-done: #2f9e5f; --c-week: #e0791f;
   color-scheme: light;
 }
 :root[data-theme="dark"] {
@@ -16,7 +16,7 @@
   --text: #f2f3f7; --muted: #bdc0cc; --faint: #a4a8b6;
   --accent: #72b4ff; --accent-soft: #2c3652;
   --green: #7fd1a0; --red: #ff8f8f;
-  --c-inbox: #72b4ff; --c-today: #f5c84b; --c-upcoming: #ff7b8a; --c-all: #4fd1c0; --c-board: #b9a2ff; --c-done: #7fd1a0;
+  --c-inbox: #72b4ff; --c-today: #f5c84b; --c-upcoming: #ff7b8a; --c-all: #4fd1c0; --c-board: #b9a2ff; --c-done: #7fd1a0; --c-week: #f5a14b;
   color-scheme: dark;
 }
 
@@ -434,7 +434,8 @@ li.hit { animation: hit 1.6s ease-out; }
 /* view icons: filled in their own color, in the sidebar and the title; .cut parts are cut out in the surface color */
 .nav svg[data-k], #vt svg[data-k] { --cut: var(--panel); }
 #vt svg[data-k] { --cut: var(--bg); }
-:is(.nav, #vt) svg:is([data-k=inbox], [data-k=today], [data-k=upcoming], [data-k=all], [data-k=board]) { fill: var(--ic); stroke: var(--ic); }
+:is(.nav, #vt) svg:is([data-k=inbox], [data-k=today], [data-k=upcoming], [data-k=week], [data-k=all], [data-k=board]) { fill: var(--ic); stroke: var(--ic); }
+:is(.nav, #vt) svg[data-k=week] { --ic: var(--c-week); }
 :is(.nav, #vt) svg[data-k=done] { stroke: var(--ic); stroke-width: 2.5; }
 :is(.nav, #vt) svg[data-k=board] { stroke-width: 1; }
 :is(.nav, #vt) svg[data-k=inbox] { --ic: var(--c-inbox); }
@@ -479,7 +480,6 @@ li .body > .area { display: inline; max-width: none; padding: 0; font-size: 13px
 
 /* ---- Week: Mon-Fri columns, Sat and Sun stacked; events, a line, then tasks on ruled lines ---- */
 body.week main { max-width: none; }
-body.week #f, body.week .hint { display: none; }
 #list.week { --wline: 40px; }
 #list.week > li { display: block; min-height: 0; padding: 0; background: none; border: 0; cursor: default; }
 #list.week li.future { opacity: 1; }
@@ -488,7 +488,7 @@ body.week #f, body.week .hint { display: none; }
 .wbar .wnav { height: 36px; min-width: 36px; padding: 0 12px; border-radius: 18px; border: 1px solid var(--border); background: none; color: var(--text); font: 600 15px var(--sans); cursor: pointer; }
 .wbar .wnav:hover { background: var(--panel); }
 .wbar .wtoday:disabled { opacity: .45; cursor: default; background: none; }
-#list.week > li.wgrid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 28px; align-items: start; }
+#list.week > li.wgrid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 22px; align-items: start; }
 .wkend { display: flex; flex-direction: column; gap: 26px; min-width: 0; }
 .wday { min-width: 0; display: flex; flex-direction: column; }
 .wdh { display: flex; align-items: baseline; gap: 8px; padding: 0 4px 10px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
@@ -509,19 +509,20 @@ body.week #f, body.week .hint { display: none; }
 .wev.now { background: var(--accent-soft); } .wev.now .tm { color: var(--accent); font-weight: 700; }
 .wsep { margin: 8px 0 0; border-top: 1px solid var(--border-strong); }
 ul.wtasks { list-style: none; margin: 0; padding: 0; }
-ul.wtasks > li { min-height: var(--wline); padding: 9px 2px 8px; border-bottom: 1px solid var(--border); background: none; font-size: 14.5px; gap: 8px; }
+ul.wtasks > li { position: relative; flex-wrap: wrap; row-gap: 4px; min-height: var(--wline); padding: 9px 22px 8px 2px; border-bottom: 1px solid var(--border); background: none; font-size: 14.5px; gap: 8px; }
 ul.wtasks > li[data-id] { cursor: grab; }
-ul.wtasks > li .x { display: none; }
-ul.wtasks > li:hover .x { display: grid; }
-ul.wtasks > li .when.chip { padding: 1px 6px; font-size: 12px; }
-ul.wtasks > li.wline { padding: 0; }
-ul.wtasks > li.wfill { cursor: text; }
-.wadd input { width: 100%; height: calc(var(--wline) - 1px); padding: 0 2px 0 28px; margin: 0; background: none; border: 0; color: var(--text); font: 14px var(--sans); outline: none; }
-.wadd input::placeholder { color: var(--faint); opacity: .8; }
-.wadd input:focus { background: var(--panel); border-radius: 6px; }
+ul.wtasks > li .body { flex: 1 1 calc(100% - 26px); min-width: 0; } /* the title gets the row; chips go under it */
+ul.wtasks > li .when.chip, ul.wtasks > li .dl { order: 5; flex: none; margin: 0 0 0 26px; padding: 1px 6px; min-height: 0; font-size: 12px; }
+ul.wtasks > li .dl + .when.chip, ul.wtasks > li .when.chip + .dl { margin-left: 0; }
+ul.wtasks > li .body > .area { display: block; max-width: 100%; padding: 2px 0 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* its own line, one line long */
+ul.wtasks > li .t { overflow-wrap: break-word; font-size: 14px; } /* break between words; only a word too long for the column breaks inside */
+ul.wtasks > li .note { display: none; } /* notes stay in the task sheet: columns are narrow */
+ul.wtasks > li .x { position: absolute; top: 6px; right: -4px; display: grid; visibility: hidden; } /* floats over the row: nothing shifts on hover */
+ul.wtasks > li:hover .x, ul.wtasks > li:focus-within .x { visibility: visible; }
+ul.wtasks:empty { min-height: 36px; } /* an empty day still takes a drop */
 ul.wtasks > li.wghost { opacity: .3; }
 ul.wtasks > li.wover { box-shadow: inset 0 2px 0 var(--accent); }
-ul.wtasks > li.wover-end { box-shadow: inset 0 2px 0 var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+ul.wtasks.wover-end { box-shadow: inset 0 -2px 0 var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 6px 6px 0 0; }
 li.wlift { position: fixed; z-index: 60; pointer-events: none; display: flex; gap: 8px; padding: 9px 10px; background: var(--panel); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 12px 30px rgba(0, 0, 0, .4); transform: rotate(-1.5deg); font-size: 14.5px; list-style: none; }
 li.wlift .x, li.wlift .when { display: none; }
 #list.week > li.wbelow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; margin-top: 34px; }
@@ -530,7 +531,6 @@ li.wlift .x, li.wlift .when { display: none; }
 @media (max-width: 767px) {
   #list.week > li.wgrid, #list.week > li.wbelow { grid-template-columns: minmax(0, 1fr); gap: 26px; }
   .wkend { flex-direction: column; grid-column: auto; gap: 26px; }
-  ul.wtasks > li.wfill { display: none; }
   body.week #vt svg { display: none; } /* room for the month on a phone */
-  ul.wtasks > li .x { display: grid; }
+  ul.wtasks > li .x { visibility: visible; }
 }
