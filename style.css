@@ -520,6 +520,9 @@ ul.wtasks > li .note { display: none; } /* notes stay in the task sheet: columns
 ul.wtasks > li .x { position: absolute; top: 6px; right: -4px; display: grid; visibility: hidden; } /* floats over the row: nothing shifts on hover */
 ul.wtasks > li:hover .x, ul.wtasks > li:focus-within .x { visibility: visible; }
 ul.wtasks:empty { min-height: 36px; } /* an empty day still takes a drop */
+.weve { display: flex; align-items: center; gap: 6px; margin: 16px 0 0; padding: 0 2px 8px; border-bottom: 1px solid var(--border-strong); color: var(--muted); font: 600 12px var(--sans); text-transform: uppercase; letter-spacing: .06em; }
+.weve svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+ul.wtasks-ev:empty { min-height: 32px; }
 ul.wtasks > li.wghost { opacity: .3; }
 ul.wtasks > li.wover { box-shadow: inset 0 2px 0 var(--accent); }
 ul.wtasks.wover-end { box-shadow: inset 0 -2px 0 var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 6px 6px 0 0; }

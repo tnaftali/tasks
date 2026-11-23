@@ -226,9 +226,18 @@ function renderWeek(td) {
     }
     const ul = Object.assign(document.createElement("ul"), { className: "wtasks" });
     ul.dataset.drop = d;
-    ul.append(...mine.map((t) => row(t, td))); // an empty day is still a drop target (min-height in style.css)
+    ul.append(...mine.filter((t) => !t.ev).map((t) => row(t, td))); // an empty day is still a drop target (min-height in style.css)
     const we = [5, 6].includes((dt.getDay() + 6) % 7);
     c.append(ul);
+    const eve = mine.filter((t) => t.ev);
+    if (eve.length || (d === td && mine.length)) { // the evening, as in Today: today's column keeps it as a drop target
+      const eh = Object.assign(document.createElement("div"), { className: "weve" });
+      eh.append(svg("evening"), "Evening");
+      const eu = Object.assign(document.createElement("ul"), { className: "wtasks wtasks-ev" });
+      eu.dataset.drop = d; eu.dataset.ev = "1";
+      eu.append(...eve.map((t) => row(t, td)));
+      c.append(eh, eu);
+    }
     if (we) c.classList.add("we");
     return c;
   };
@@ -300,7 +309,8 @@ const wdEnd = (e) => {
   if (e.type !== "pointerup" || !d.zone) return render();
   const m = tasks.find((t) => t.id === d.id), to = d.zone.dataset.drop;
   if (!m) return render();
-  if (to) m.date = to; else { delete m.date; delete m.tm; delete m.ev; delete m.rep; } // into the Inbox: no date, so no time or repeat either
+  if (to) { m.date = to; if (d.zone.dataset.ev) m.ev = true; else delete m.ev; } // the evening group sets the flag, the day's list clears it
+  else { delete m.date; delete m.tm; delete m.ev; delete m.rep; } // into the Inbox: no date, so no time or repeat either
   touch(m);
   const rows = [...d.zone.querySelectorAll(":scope > li[data-id]")].map((x) => x.dataset.id).filter((id) => id !== d.id);
   if (d.before) tasks = move(tasks, d.id, d.before.dataset.id, true);
