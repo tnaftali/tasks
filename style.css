@@ -133,6 +133,7 @@ li.sec + li { border-top: 0; }
 #list > li.ev.up { min-height: 30px; }
 #list > li.ev.up .w { margin-right: 51px; } /* lines up with the date chips of the tasks below */
 #list > li.calend { min-height: 0; height: 0; margin: 10px 0 12px; padding: 0; background: none; border-top: 1px solid var(--border); }
+#list > li.calend.up { margin: 6px 0 6px 28px; } /* within a day: starts at the titles, lighter than the day break */
 #calv { display: grid; gap: 6px; margin-bottom: 8px; }
 .calr { display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 4px 8px; }
 .calr input[type=color] { width: 36px; height: 36px; padding: 2px; margin: 0; border: 1px solid var(--border); border-radius: 8px; background: none; cursor: pointer; }

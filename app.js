@@ -274,8 +274,10 @@ function render() {
     if (evDays.length) list.querySelector(".empty")?.remove();
     const days = [...new Set([...mine.filter((t) => t.date <= near).map((t) => t.date), ...evDays])].sort(); // a day with only events still gets its group
     for (const d of days) {
-      list.append(secRow(whenLabel({ date: d }, td)), ...calDay(d).map((o) => evRow(o, d, td, true)));
-      mine.filter((t) => t.date === d).sort(byDate).forEach((t) => list.append(row(t, td)));
+      const evs = calDay(d), dayTasks = mine.filter((t) => t.date === d).sort(byDate);
+      list.append(secRow(whenLabel({ date: d }, td)), ...evs.map((o) => evRow(o, d, td, true)));
+      if (evs.length && dayTasks.length) list.append(Object.assign(document.createElement("li"), { className: "calend up" })); // events above, tasks below
+      dayTasks.forEach((t) => list.append(row(t, td)));
     }
     for (const t of mine.filter((x) => x.date > near).sort(byDate)) {
       if (t.date > near) {
