@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { merge, normalize } from "./logic.js";
-import { newCode, parseCode, derive, encrypt, decrypt, sync, API, limits, relay, captureUrl, pullInbox } from "./sync.js";
+import { newCode, parseCode, derive, encrypt, decrypt, sync, API, limits, relay, captureUrl, pullInbox, fetchCal } from "./sync.js";
 import { handle as relayHandle } from "./relay/main.js";
 import worker from "./worker/index.js";
 
@@ -186,4 +186,39 @@ test("capture: the Shortcut URL points at the relay, and a capture posted there 
     assert.equal((await fetch(url, { method: "POST", body: "dentist friday 10am" })).status, 204);
     assert.deepEqual((await pullInbox(code)).map((i) => i.text), ["dentist friday 10am"]);
   } finally { globalThis.fetch = toWorker; relay.url = ""; relay.until = 0; }
+});
+
+test("merge: the calendar list syncs as one unit, newest edit wins; an older app's side never wipes it", () => {
+  const cals = (u, ...names) => ({ u, list: names.map((n) => ({ id: n, name: n, url: `https://cal.example/${n}.ics`, color: "#72b4ff" })) });
+  const a = { ...S([]), cals: cals(5, "work") }, b = { ...S([]), cals: cals(9, "work", "gym") };
+  assert.deepEqual(merge(a, b).cals.list.map((c) => c.id), ["work", "gym"]);
+  assert.deepEqual(merge(b, a).cals.list.map((c) => c.id), ["work", "gym"]);
+  const old = normalize({ tasks: [] }); // a side from before calendars
+  assert.deepEqual(merge(old, a).cals.list.map((c) => c.id), ["work"]);
+  assert.deepEqual(merge(a, old).cals.list.map((c) => c.id), ["work"]);
+  assert.deepEqual(normalize({ cals: { u: 1, list: [{ id: "x", url: "http://insecure" }, { id: "y", url: "https://ok.example/c.ics" }] } }).cals.list.map((c) => c.id), ["y"]);
+});
+
+test("calendar: the Worker fetches a feed for a sync-code holder only, through the relay too", async () => {
+  fakeWorker();
+  const toWorker = globalThis.fetch, R = "https://relay.example/api", ICS = "BEGIN:VCALENDAR\r\nX-WR-CALNAME:Work\r\nEND:VCALENDAR";
+  const asked = [];
+  globalThis.fetch = (url, init) => {
+    const u = String(url);
+    if (u.startsWith("https://calendar.example/")) { asked.push(u); return Promise.resolve(u.endsWith("gone.ics") ? new Response("nope", { status: 404 }) : u.endsWith("page.ics") ? new Response("<html>", { status: 200 }) : new Response(ICS, { status: 200 })); }
+    if (u.startsWith(R)) return relayHandle(new Request(u, init), (a, b) => globalThis.fetch(a, b), "/api");
+    return toWorker(u, init);
+  };
+  try {
+    const code = newCode();
+    await sync(code, S([])); // the write key exists once sync is on
+    assert.equal(await fetchCal(code, "https://calendar.example/work.ics"), ICS);
+    await assert.rejects(fetchCal(code, "https://calendar.example/gone.ics"), /link not found/);
+    await assert.rejects(fetchCal(code, "https://calendar.example/page.ics"), /not a calendar/);
+    await assert.rejects(fetchCal(code, "http://10.0.0.1/x.ics"), /not a valid https link/); // no private addresses
+    await assert.rejects(fetchCal(newCode(), "https://calendar.example/work.ics"), /calendar 403/); // no sync code, no fetch
+    relay.url = R; relay.until = Date.now() + 6e4; // as during a block
+    assert.equal(await fetchCal(code, "https://calendar.example/work.ics"), ICS);
+    assert.deepEqual(asked.map((u) => u.split("/").pop()), ["work.ics", "gone.ics", "page.ics", "work.ics"]);
+  } finally { globalThis.fetch = toWorker; relay.url = R.replace("relay.example/api", "tasks-relay-one.vercel.app/api"); relay.until = 0; }
 });

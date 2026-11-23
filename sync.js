@@ -78,6 +78,13 @@ export async function fetchTitle(code, url) { // the page title, or "" when the 
   const res = await net(`${API.replace(/b\/$/, "t/")}${id}?url=${encodeURIComponent(url)}`, { headers: { "X-Write-Key": wk } });
   return res.status === 200 ? (await res.json()).title ?? "" : "";
 }
+// A calendar's iCal feed, fetched by the Worker (Google's feed cannot be read from a web page). The link goes in the body, not the URL, so it stays out of logs.
+export async function fetchCal(code, url) {
+  const { id, wk } = await derive(code);
+  const res = await route("/c/" + id, { method: "POST", headers: { "X-Write-Key": wk, "Content-Type": "text/plain" }, body: url });
+  if (res.status === 200) return res.text();
+  throw new Error({ 404: "link not found or no longer valid", 400: "not a valid https link", 422: "that link is not a calendar", 413: "calendar too large" }[res.status] ?? `calendar ${res.status}`);
+}
 export async function ackInbox(code, n) {
   const { id, wk } = await derive(code);
   await route(`/i/${id}?n=${n}`, { method: "DELETE", headers: { "X-Write-Key": wk } });

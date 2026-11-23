@@ -178,6 +178,15 @@
       <button id="capt" type="button">Today URL</button>
     </div>
     <input id="capv" readonly hidden aria-label="Capture URL" onfocus="this.select()">
+    <p class="sub">Calendars</p>
+    <p>Show your events in Today and Upcoming, read-only. In Google Calendar on a computer: Settings → pick a calendar → Integrate calendar → copy the <b>Secret address in iCal format</b>. The link is saved encrypted with your tasks, on all your devices.</p>
+    <div id="calv"></div>
+    <div class="row calnew">
+      <input id="calu" placeholder="Secret iCal link" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Secret iCal link">
+      <input id="caln" placeholder="Name (optional)" autocomplete="off" maxlength="40" aria-label="Calendar name">
+      <button id="cala" type="button">Add</button>
+    </div>
+    <p id="calst" class="st" role="status"></p>
     <p class="sub">On your other device: open the link, or open Settings → paste the code. On iPhone the installed app and Safari keep separate data, so join inside the app.</p>
     <button class="danger" id="offb" type="button">Turn off on this device</button>
   </div>

@@ -224,7 +224,19 @@ export function normalize(s) {
     tomb,
     ou: Number.isFinite(s?.ou) ? s.ou : 0,
     lists: cleanLists(s?.lists),
+    cals: cleanCals(s?.cals),
   };
+}
+
+// Calendar feeds to show, read-only: { u: last edit, list: [{ id, name, url, color }] }. The whole set syncs as one unit, newest edit wins.
+// The url is a secret (it reads the calendar), so it lives only inside the encrypted blob.
+export function cleanCals(c) {
+  const seen = new Set();
+  const list = (Array.isArray(c?.list) ? c.list : [])
+    .filter((x) => x && typeof x.id === "string" && typeof x.url === "string" && /^https:\/\/\S+$/.test(x.url) && x.url.length <= 2000 && !seen.has(x.id) && seen.add(x.id))
+    .slice(0, 20)
+    .map((x) => ({ id: x.id, name: String(x.name ?? "").trim().slice(0, 40) || "Calendar", url: x.url, color: /^#[0-9a-f]{6}$/i.test(x.color) ? x.color : "#72b4ff", ...(x.auto === true ? { auto: true } : {}) })); // auto: named "Calendar" until the feed gives its own name
+  return { u: Number.isFinite(c?.u) ? c.u : 0, list };
 }
 
 // Newest edit wins per task. A delete beats a task not edited since. The side with the newer `ou`
@@ -245,8 +257,9 @@ export function merge(a, b) {
   for (const l of [...lb, ...la]) { const c = lmap.get(l.id); if (!c || l.u >= c.u) lmap.set(l.id, l); } // newest rename wins
   // the side with the newer order (ou) sets the list order
   const lists = [...new Set([...(win === a ? la : lb), ...(win === a ? lb : la)].map((l) => l.id))].map((id) => lmap.get(id)).filter((l) => l.u > (tomb[l.id] ?? -1));
-  return { tasks, tomb, ou: Math.max(a.ou, b.ou), lists };
+  const cals = (a.cals?.u ?? 0) >= (b.cals?.u ?? 0) ? a.cals ?? cleanCals() : b.cals; // a side from an older app has none: it never wins
+  return { tasks, tomb, ou: Math.max(a.ou, b.ou), lists, cals };
 }
 
 // Cheap equality for two sides, used to skip no-op saves and uploads.
-export const sig = (s) => JSON.stringify([s.tasks.map((t) => [t.id, t.text, t.done, t.u, t.date, t.dl, t.rep, t.l, t.s, t.h, t.dt, t.ev, t.tm, t.n, t.c]), Object.entries(s.tomb).sort(), s.ou, (s.lists ?? []).map((l) => [l.id, l.name, l.u, l.heads, l.subs])]);
+export const sig = (s) => JSON.stringify([s.tasks.map((t) => [t.id, t.text, t.done, t.u, t.date, t.dl, t.rep, t.l, t.s, t.h, t.dt, t.ev, t.tm, t.n, t.c]), Object.entries(s.tomb).sort(), s.ou, (s.lists ?? []).map((l) => [l.id, l.name, l.u, l.heads, l.subs]), s.cals ?? null]);

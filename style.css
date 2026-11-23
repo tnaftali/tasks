@@ -114,6 +114,35 @@ li.sec.head:hover .hx { opacity: 1; }
 #list:not(.board) li.sec.head.in .hn { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; text-align: left; }
 #list:not(.board) li.sec.head.in .hn::after { content: ""; flex: 1; height: 1px; background: var(--border-strong); }
 li.sec + li { border-top: 0; }
+/* Calendar events: read-only rows, a coloured bar in the checkbox column marks the calendar */
+#list > li.calh { align-items: center; gap: 10px; min-height: 0; padding: 2px 0 8px; background: none; cursor: pointer; color: var(--text); font: 700 16px var(--title); }
+#list > li.calh .ic { flex: none; width: 18px; display: grid; place-items: center; color: var(--muted); }
+#list > li.calh svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#list > li.calh .n, #list > li.calh .sum { font: 500 13px var(--sans); color: var(--faint); }
+#list > li.calh .sum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#list > li.calh .chev { margin-left: auto; color: var(--faint); display: grid; transform: rotate(90deg); transition: transform .15s; }
+#list > li.calh.shut .chev { transform: none; }
+#list > li.ev { align-items: center; gap: 10px; min-height: 34px; padding: 4px 0; background: none; cursor: default; font-size: 15px; }
+#list > li.ev .bar { flex: none; width: 18px; display: grid; place-items: center; }
+#list > li.ev .bar i { display: block; width: 4px; height: 18px; border-radius: 2px; background: var(--c); }
+#list > li.ev .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#list > li.ev .w { flex: none; color: var(--muted); font: 500 13px var(--sans); font-variant-numeric: tabular-nums; }
+#list > li.ev.allday .t { font-weight: 600; }
+#list > li.ev.past { opacity: .45; }
+#list > li.ev.now .w { color: var(--accent); font-weight: 700; }
+#list > li.ev.up { min-height: 30px; }
+#list > li.ev.up .w { margin-right: 51px; } /* lines up with the date chips of the tasks below */
+#list > li.calend { min-height: 0; height: 0; margin: 10px 0 12px; padding: 0; background: none; border-top: 1px solid var(--border); }
+#calv { display: grid; gap: 6px; margin-bottom: 8px; }
+.calr { display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 4px 8px; }
+.calr input[type=color] { width: 36px; height: 36px; padding: 2px; margin: 0; border: 1px solid var(--border); border-radius: 8px; background: none; cursor: pointer; }
+.calr input[type=text] { margin: 0; }
+.calr .calinfo { grid-column: 2 / -1; font-size: 13px; color: var(--faint); }
+.calr .calinfo.bad { color: var(--red); }
+.calr .calx { width: 36px; height: 36px; display: grid; place-items: center; background: none; border: 0; color: var(--faint); cursor: pointer; }
+.calr .calx svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.calnew #calu { flex: 2 1 200px; }
+.calnew #caln { flex: 1 1 120px; }
 li.sec[data-ev] + li { border-top: 1px solid var(--border); padding-top: 12px; }
 .area { flex: 0 1 auto; max-width: 34%; margin: 0; padding: 1px 0 0 8px; background: none; border: 0; border-radius: 4px; color: var(--faint); font: 13px/1.4 var(--sans); cursor: pointer; appearance: none; -webkit-appearance: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .area:hover { color: var(--text); }

@@ -77,6 +77,15 @@ On football match days Spanish ISPs block Cloudflare IPs, so the app and the cap
 - It passes tasks (`/b/`, encrypted) and the capture inbox (`/i/`, plain text until the app pulls it). Link titles and reminders stay on the Worker.
 - Deploy: on vercel.com, import this repo with Root Directory `relay` and no build settings. Put the URL plus `/api` in `relay.url` in `sync.js`, e.g. `https://tasks-relay.vercel.app/api`.
 
+## Calendars (optional)
+
+Show events from your calendars in Today (a foldable section on top) and Upcoming (under each day), read-only. Needs sync.
+
+- In Google Calendar on a computer: Settings → pick a calendar → Integrate calendar → copy the **Secret address in iCal format**. Paste it under Settings → Calendars. Add as many as you like.
+- The links are secrets: anyone with one can read that calendar. They sync inside the encrypted blob, so the server stores them only encrypted.
+- Browsers can't fetch those links directly, so the Worker (`/c/`, or the relay during a block) fetches each feed and passes it through without storing it. Event titles pass through in plain text.
+- Each device refreshes every 15 minutes and keeps the next month of events, so they show offline too. `cal.js` expands repeats, moved and cancelled occurrences and time zones with [ical.js](https://github.com/kewisch/ical.js) (MPL-2.0, in `vendor/`).
+
 ## Reminders (optional)
 
 Give a task a date and a time. Type it ("call Sam tomorrow 3pm") or use the time picker in the task sheet. With reminders on, the phone gets a notification at that time, even with the app closed. They need sync, and on iPhone the app must be opened from its Home Screen icon.

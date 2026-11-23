@@ -1,6 +1,7 @@
-import { addDays, label, linkFallback, linkify, merge, move, newId, daysBetween, nextDate, nextMonday, normalize, spawnMissed, resetEvening, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
+import { addDays, cleanCals, label, linkFallback, linkify, merge, move, newId, daysBetween, nextDate, nextMonday, normalize, spawnMissed, resetEvening, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
 import { fromCapture, parseWhen } from "./nl.js";
-import { VAPID_PUBLIC, ackInbox, captureUrl, derive, fetchTitle, newCode, parseCode, pullInbox, putReminders, sync } from "./sync.js";
+import { expand, onDay, span } from "./cal.js";
+import { VAPID_PUBLIC, ackInbox, captureUrl, derive, fetchCal, fetchTitle, newCode, parseCode, pullInbox, putReminders, sync } from "./sync.js";
 
 const KEY = "braindump.tasks";
 const META = "braindump.meta"; // { tomb, ou, lists }: deleted ids, last reorder time and the named lists, all needed to merge
@@ -66,7 +67,7 @@ const touch = (t) => { t.u = now(); };
 const drop = (t) => { meta.tomb[t.id] = now(); };
 
 function loadMeta() {
-  try { const m = normalize({ tasks: [], ...JSON.parse(localStorage.getItem(META)) }); return { tomb: m.tomb, ou: m.ou, lists: m.lists }; } catch { return { tomb: {}, ou: 0, lists: [] }; }
+  try { const m = normalize({ tasks: [], ...JSON.parse(localStorage.getItem(META)) }); return { tomb: m.tomb, ou: m.ou, lists: m.lists, cals: m.cals }; } catch { return { tomb: {}, ou: 0, lists: [], cals: cleanCals() }; }
 }
 
 function load() {
@@ -269,7 +270,14 @@ function render() {
   } else if (view === "upcoming") { // future dates only, one group per day
     let last = "";
     const near = addDays(td, 10), mon = (d) => d.slice(0, 7); // the next 10 days by day; later ones fold into a month each
-    for (const t of mine.sort(byDate)) {
+    const evDays = calOn() ? Array.from({ length: 10 }, (_, i) => addDays(td, i + 1)).filter((d) => calDay(d).length) : [];
+    if (evDays.length) list.querySelector(".empty")?.remove();
+    const days = [...new Set([...mine.filter((t) => t.date <= near).map((t) => t.date), ...evDays])].sort(); // a day with only events still gets its group
+    for (const d of days) {
+      list.append(secRow(whenLabel({ date: d }, td)), ...calDay(d).map((o) => evRow(o, d, td, true)));
+      mine.filter((t) => t.date === d).sort(byDate).forEach((t) => list.append(row(t, td)));
+    }
+    for (const t of mine.filter((x) => x.date > near).sort(byDate)) {
       if (t.date > near) {
         if (mon(t.date) !== last) {
           last = mon(t.date);
@@ -280,7 +288,7 @@ function render() {
           list.append(secRow("", u));
         }
         if (!folded.has(`upm:${last}`)) continue;
-      } else if (t.date !== last) { last = t.date; list.append(secRow(whenLabel({ date: t.date }, td))); }
+      }
       list.append(row(t, td));
     }
   } else {
@@ -321,6 +329,7 @@ function render() {
       if (folded.has(`sched:${view}`)) sched.forEach((t) => list.append(row(t, td)));
     }
   }
+  if (view === "today") list.prepend(...calBlock(td));
   remQueue();
   renderTabs({ inbox: tasks.filter((t) => !t.done && !areaOf(t) && !t.date).length, today: tasks.filter((t) => !t.done && (t.date <= td || t.dl <= td)).length });
 }
@@ -929,7 +938,7 @@ const LASTSYNC = "braindump.lastsync"; // per device
 let code = null, timer = 0, running = false, lastSync = 0;
 try { lastSync = +localStorage.getItem(LASTSYNC) || 0; } catch {}
 try { code = localStorage.getItem(SYNC); } catch {}
-const side = () => ({ tasks, tomb: meta.tomb, ou: meta.ou, lists: meta.lists });
+const side = () => ({ tasks, tomb: meta.tomb, ou: meta.ou, lists: meta.lists, cals: meta.cals });
 const busy = () => drag || document.activeElement?.isContentEditable;
 const LABEL = { off: "", syncing: "Syncing…", ok: "", offline: "Offline", error: "Sync failed" };
 const stamp = (ms) => new Date(ms).toLocaleString([], new Date(ms).toDateString() === new Date().toDateString() ? { hour: "2-digit", minute: "2-digit" } : { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); // today: just the time
@@ -957,7 +966,7 @@ async function runSync() {
     const out = await sync(code, side());
     if (busy()) { setStatus("ok"); return queue(1500); }
     const m = merge(side(), out); // folds in edits made while the request ran
-    if (sig(m) !== sig(side())) { tasks = m.tasks; meta = { tomb: m.tomb, ou: m.ou, lists: m.lists }; save(); render(); }
+    if (sig(m) !== sig(side())) { tasks = m.tasks; const calsChanged = sig({ tasks: [], tomb: {}, ou: 0, cals: m.cals }) !== sig({ tasks: [], tomb: {}, ou: 0, cals: meta.cals }); meta = { tomb: m.tomb, ou: m.ou, lists: m.lists, cals: m.cals }; save(); render(); if (calsChanged) loadCals(true); }
     setStatus("ok");
     await pullCaptures().catch((e) => console.error("inbox failed", e)); // never fails the sync
   } catch (e) { console.error("sync failed", e); setStatus("error", e?.message ?? String(e)); } finally {
@@ -997,6 +1006,97 @@ for (const [id, to] of [["capc", ""], ["capt", "&to=today"]]) $(id).onclick = as
   catch (err) { $("st").textContent = `Capture URL failed: ${err.message}`; }
 };
 
+// ---- Calendars ----
+// Read-only events from calendar feeds (Google's "Secret address in iCal format"). The links sync, encrypted, in meta.cals;
+// each device fetches the feeds through the Worker and keeps the next month of events, parsed, in its own storage.
+const CALCACHE = "braindump.calcache", CALSHUT = "braindump.calshut"; // per device
+const CALCOLORS = ["#72b4ff", "#4fd1c0", "#f5a14b", "#ff7b8a", "#b9a2ff", "#7fd1a0", "#f5c84b"];
+let calCache = {}, calShut = false, calBusy = false;
+try { calCache = JSON.parse(localStorage.getItem(CALCACHE) ?? "{}") ?? {}; } catch {}
+try { calShut = localStorage.getItem(CALSHUT) === "1"; } catch {}
+const calOn = () => !!code && meta.cals.list.length > 0;
+const calDay = (d) => meta.cals.list.flatMap((c) => onDay(calCache[c.id]?.url === c.url ? calCache[c.id].occ : [], d).map((o) => ({ ...o, cal: c })))
+  .sort((a, b) => b.allDay - a.allDay || a.start - b.start || a.title.localeCompare(b.title));
+async function loadCals(force = false) {
+  if (!calOn() || calBusy) return;
+  calBusy = true;
+  const td = today(), from = addDays(td, -1), to = addDays(td, 31);
+  let renamed = false;
+  try {
+    await Promise.all(meta.cals.list.map(async (c) => {
+      const old = calCache[c.id];
+      if (!force && old?.url === c.url && now() - old.at < 15 * 6e4 && old.from <= td) return; // fresh enough
+      try {
+        const text = await fetchCal(code, c.url);
+        calCache[c.id] = { url: c.url, at: now(), from, to, occ: expand(text, from, to) };
+        const name = text.match(/^X-WR-CALNAME:(.+)$/m)?.[1]?.trim();
+        if (c.auto && name) { c.name = name.slice(0, 40); delete c.auto; renamed = true; } // added without a name: use the calendar's own
+      } catch (e) {
+        calCache[c.id] = { ...(old?.url === c.url ? old : { from, to, occ: [] }), url: c.url, at: now(), err: e?.message ?? String(e) }; // keep the last good events
+      }
+    }));
+    for (const id of Object.keys(calCache)) if (!meta.cals.list.some((c) => c.id === id)) delete calCache[id];
+    try { localStorage.setItem(CALCACHE, JSON.stringify(calCache)); } catch {}
+  } finally { calBusy = false; }
+  if (renamed) { meta.cals.u = now(); save(); queue(); }
+  render(); drawCals();
+}
+const hhmm = (ms) => new Date(ms).toTimeString().slice(0, 5);
+function evRow(o, d, td, up) {
+  const li = Object.assign(document.createElement("li"), { className: `ev${o.allDay ? " allday" : ""}${up ? " up" : ""}`, title: o.cal.name });
+  const t = now(), live = d === td && !o.allDay && o.start <= t && t < o.end;
+  if (d === td && !o.allDay && (o.end > o.start ? o.end <= t : o.start < t)) li.classList.add("past");
+  if (live) li.classList.add("now");
+  li.style.setProperty("--c", o.cal.color);
+  const bar = Object.assign(document.createElement("span"), { className: "bar" }); bar.append(document.createElement("i"));
+  const endsToday = o.end <= new Date(addDays(d, 1) + "T00:00").getTime();
+  li.append(bar, Object.assign(document.createElement("span"), { className: "t", textContent: o.title }), Object.assign(document.createElement("span"), { className: "w", textContent: live ? (endsToday ? `Now · until ${hhmm(o.end)}` : "Now") : span(o, d) }));
+  return li;
+}
+// Today: a foldable "Calendar" group on top. Folded, it says what is on now and what is next.
+function calBlock(td) {
+  if (!calOn()) return [];
+  const evs = calDay(td), t = now(), timed = evs.filter((o) => !o.allDay);
+  const cur = timed.find((o) => o.start <= t && t < o.end), next = timed.find((o) => o.start > t);
+  const sum = !evs.length ? "Nothing today" : cur ? `Now: ${cur.title}${next ? `, then ${next.title} at ${hhmm(next.start)}` : ""}` : next ? `Next: ${next.title} at ${hhmm(next.start)}` : timed.length ? "Done for today" : "";
+  const shut = calShut || !evs.length;
+  const h = Object.assign(document.createElement("li"), { className: `calh${shut ? " shut" : ""}`, title: shut ? "Show events" : "Hide events" });
+  const ic = Object.assign(document.createElement("span"), { className: "ic" }); ic.append(svg("upcoming"));
+  const chev = Object.assign(document.createElement("span"), { className: "chev" }); chev.append(svg("chev"));
+  h.append(ic, "Calendar", Object.assign(document.createElement("span"), { className: "n", textContent: evs.length || "" }), ...(shut && sum ? [Object.assign(document.createElement("span"), { className: "sum", textContent: `· ${sum}` })] : []), ...(evs.length ? [chev] : []));
+  if (evs.length) h.onclick = () => { calShut = !calShut; try { localStorage.setItem(CALSHUT, calShut ? "1" : "0"); } catch {} render(); };
+  return [h, ...(shut ? [] : evs.map((o) => evRow(o, td, td))), Object.assign(document.createElement("li"), { className: "calend" })];
+}
+// Settings: one row per calendar (colour, name, status, remove) and a box to add one.
+function drawCals() {
+  $("calv").replaceChildren(...meta.cals.list.map((c) => {
+    const r = Object.assign(document.createElement("div"), { className: "calr" }), st = calCache[c.id];
+    const col = Object.assign(document.createElement("input"), { type: "color", value: c.color, title: "Colour" });
+    col.setAttribute("aria-label", `Colour of ${c.name}`);
+    col.onchange = () => { c.color = col.value; meta.cals.u = now(); commit(); };
+    const nm = Object.assign(document.createElement("input"), { type: "text", value: c.name, maxLength: 40 });
+    nm.setAttribute("aria-label", "Calendar name");
+    nm.onchange = () => { const v = nm.value.trim(); if (v) { c.name = v; delete c.auto; meta.cals.u = now(); commit(); } else nm.value = c.name; };
+    const info = Object.assign(document.createElement("span"), { className: `calinfo${st?.err ? " bad" : ""}`, textContent: !st ? "Loading…" : st.err ? `Couldn't load: ${st.err}` : `${st.occ.filter((o) => o.start >= Date.now() - 864e5).length} events this month` });
+    const x = ibtn("x", "calx", async () => {
+      if (!(await ask({ title: `Remove ${c.name}?`, text: "Its events stop showing on all your devices. The calendar itself is not touched.", ok: "Remove", danger: true }))) return;
+      meta.cals = { u: now(), list: meta.cals.list.filter((y) => y !== c) }; delete calCache[c.id]; commit(); drawCals();
+    }, "Remove");
+    r.append(col, nm, x, info);
+    return r;
+  }));
+}
+$("cala").onclick = () => {
+  const url = $("calu").value.trim().replace(/^webcal:\/\//i, "https://"), name = $("caln").value.trim();
+  if (!/^https:\/\/\S+$/.test(url)) { $("calst").textContent = "Paste the calendar's secret iCal link (it starts with https://)."; return; }
+  if (meta.cals.list.some((c) => c.url === url)) { $("calst").textContent = "That calendar is already added."; return; }
+  if (meta.cals.list.length >= 20) { $("calst").textContent = "20 calendars at most."; return; }
+  const used = new Set(meta.cals.list.map((c) => c.color));
+  meta.cals = { u: now(), list: [...meta.cals.list, { id: newId(), name: (name || "Calendar").slice(0, 40), url, color: CALCOLORS.find((k) => !used.has(k)) ?? CALCOLORS[meta.cals.list.length % CALCOLORS.length], ...(name ? {} : { auto: true }) }] };
+  $("calu").value = $("caln").value = ""; $("calst").textContent = "";
+  commit(); drawCals(); loadCals(true);
+};
+
 function setCode(c) {
   if (remOn && c !== code) disableReminders(code); // reminders belong to one sync code
   code = c;
@@ -1011,6 +1111,7 @@ function showDialog() {
   $("codev").value = code ?? "";
   $("remb").textContent = remOn ? "Turn off reminders" : "Turn on reminders";
   $("remt").hidden = !remOn;
+  drawCals();
 }
 // ---- Reminders ----
 // Web Push: the Worker's cron job pushes at the due time and the service worker shows it, so the app can be closed.
@@ -1124,7 +1225,10 @@ const rollover = () => { // a new day, or a reminder time that passed since the 
 };
 addEventListener("online", () => queue(500));
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { rollover(); queue(300); } });
-setInterval(() => { if (document.visibilityState === "visible") { rollover(); queue(0); } }, 60000); // pick up changes from other devices while the app stays open
+setInterval(() => { if (document.visibilityState === "visible") { rollover(); queue(0); if (calOn() && !busy() && !drag && (view === "today" || view === "upcoming")) render(); } }, 60000); // pick up changes from other devices while the app stays open; "Now" in the calendar moves on
+setInterval(() => { if (document.visibilityState === "visible") loadCals(); }, 5 * 60000); // each feed refreshes when older than 15 minutes
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadCals(); });
+loadCals();
 queue(300);
 // Ctrl+K (Cmd+K): jump to a view, area or project. Type to filter, arrows and Enter to pick, Esc to close.
 const kd = $("kbar"), kq = $("kq"), kl = $("kl");

@@ -33,11 +33,16 @@ export function titleOf(html) {
   const s = unent(t).replace(/\s+/g, " ").trim().slice(0, 200);
   return GENERIC.test(s) && s.length < 40 ? "" : s;
 }
-async function pageTitle(raw) {
+// Only https URLs with a public host name: the Worker fetches what the client names, so no addresses or local names.
+const publicUrl = (raw) => {
   let u;
-  try { u = new URL(raw); } catch { return ""; }
+  try { u = new URL(raw); } catch { return null; }
   const h = u.hostname;
-  if (u.protocol !== "https:" || !h.includes(".") || /^[\d.]+$/.test(h) || h.includes(":") || /(^|\.)(local|localhost|internal|lan)$/i.test(h)) return ""; // public names only
+  return u.protocol !== "https:" || !h.includes(".") || /^[\d.]+$/.test(h) || h.includes(":") || /(^|\.)(local|localhost|internal|lan)$/i.test(h) ? null : u;
+};
+async function pageTitle(raw) {
+  const u = publicUrl(raw);
+  if (!u) return "";
   try {
     const res = await fetch(u, { headers: { "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)", Accept: "text/html" }, signal: AbortSignal.timeout(4000), redirect: "follow" });
     if (!res.ok || !/text\/html/i.test(res.headers.get("Content-Type") ?? "")) return "";
@@ -71,6 +76,22 @@ export default {
       const { metadata } = await env.BLOBS.getWithMetadata(tm[1]);
       if (!metadata?.w || metadata.w !== req.headers.get("X-Write-Key")) return reply("forbidden", 403);
       return reply(JSON.stringify({ title: await pageTitle(new URL(req.url).searchParams.get("url")) }), 200, { "Content-Type": "application/json" });
+    }
+    const cm = new URL(req.url).pathname.match(/^\/c\/([0-9a-f]{64})$/);
+    if (cm) { // POST /c/<id>, body = a calendar's secret iCal link: the feed, passed through (browsers cannot fetch it themselves). Not stored. Only a holder of the sync code may ask.
+      if (req.method !== "POST") return reply("method not allowed", 405);
+      const { metadata } = await env.BLOBS.getWithMetadata(cm[1]);
+      if (!metadata?.w || metadata.w !== req.headers.get("X-Write-Key")) return reply("forbidden", 403);
+      const u = publicUrl((await req.text()).trim().slice(0, 2000));
+      if (!u) return reply("bad link", 400);
+      try {
+        const res = await fetch(u, { headers: { Accept: "text/calendar, */*" }, signal: AbortSignal.timeout(15000), redirect: "follow" });
+        if (!res.ok) return reply(`calendar ${res.status}`, res.status === 404 || res.status === 403 || res.status === 401 ? 404 : 502);
+        if (Number(res.headers.get("Content-Length")) > 8 * 1024 * 1024) return reply("too large", 413);
+        const text = await res.text();
+        if (!/BEGIN:VCALENDAR/i.test(text.slice(0, 4000))) return reply("not a calendar", 422);
+        return reply(text, 200, { "Content-Type": "text/calendar; charset=utf-8" });
+      } catch { return reply("calendar unreachable", 502); }
     }
     const pm = new URL(req.url).pathname.match(/^\/p\/([0-9a-f]{64})$/);
     if (pm) { // PUT /p/<id>: this device's push subscription and the reminders due, replacing the old list
