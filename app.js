@@ -1,5 +1,5 @@
 import { addDays, cleanCals, label, linkFallback, linkify, merge, move, newId, daysBetween, nextDate, nextMonday, normalize, spawnMissed, resetEvening, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
-import { fromCapture, parseWhen } from "./nl.js";
+import { fromCapture, parseOn, parseWhen } from "./nl.js";
 import { expand, onDay, span } from "./cal.js";
 import { VAPID_PUBLIC, ackInbox, captureUrl, derive, fetchCal, fetchTitle, newCode, parseCode, pullInbox, putReminders, sync } from "./sync.js";
 
@@ -28,7 +28,7 @@ const goView = (v) => { view = v; try { localStorage.setItem(VIEW, v); } catch {
 const setView = (v, deep) => { if (v === view) return; trail = deep ? [...trail, view] : []; goView(v); };
 // A task has an optional date and an optional area. Inbox: neither. Today: any date. Area tab: that area's tasks, dated or not.
 const areaOf = (t) => (meta.lists.some((l) => l.id === t.l) ? t.l : ""); // a task of an unknown area counts as having none
-const isArea = () => !["inbox", "today", "upcoming", "done", "board", "all"].includes(view); // a view is a built-in name, an area id, or "area|subarea"
+const isArea = () => !["inbox", "today", "upcoming", "week", "done", "board", "all"].includes(view); // a view is a built-in name, an area id, or "area|subarea"
 const vArea = () => view.split("|")[0], vSub = () => view.split("|")[1] ?? "";
 const NAVFOLD = "braindump.navfold"; // areas whose subareas are hidden in the sidebar; per device
 const navShut = new Set(); try { for (const id of JSON.parse(localStorage.getItem(NAVFOLD) ?? "[]")) navShut.add(id); } catch {}
@@ -161,7 +161,7 @@ function row(t, td) {
   }
   const past = !!t.tm && new Date(`${t.date}T${t.tm}`) <= new Date(); // a passed time is hidden; the task keeps it
   const shown = past ? { ...t, tm: undefined } : t;
-  const label = view === "today" && (t.date === td || (t.date < td && !t.id.includes("@"))) ? shown.tm ?? "" : whenLabel(shown, td); // in Today every due row would just say "Today", so show only its time
+  const label = view === "week" ? shown.tm ?? "" : view === "today" && (t.date === td || (t.date < td && !t.id.includes("@"))) ? shown.tm ?? "" : whenLabel(shown, td); // in Today every due row would just say "Today", so show only its time
   const chip = !!label && !t.done;
   const w = Object.assign(document.createElement("button"), { type: "button", className: "when chip", title: "Date and repeat", textContent: label });
   w.setAttribute("aria-label", "Date and repeat");
@@ -185,6 +185,149 @@ const upRow = (n, key) => { // the general Upcoming heading folds, per page; a g
 };
 const ibtn = (k, cls, fn, title, open) => { const b = btn("", cls, fn, title); b.append(svg(k)); if (open) b.classList.add("open"); return b; }; // a button drawn with an ICON, not a glyph
 const btn = (text, cls, fn, title) => Object.assign(document.createElement("button"), { type: "button", textContent: text, className: cls, title, onclick: fn });
+
+// ---- Week ----
+// Monday to Sunday side by side (Sat and Sun share a column): each day's events, a line, then its tasks on ruled lines.
+// Type on a day's first free line to add a task to that day. Drag tasks between days, within a day, or to and from the Inbox below.
+let wkOff = 0; // weeks from this one; per session
+const mondayOf = (d) => addDays(d, -((new Date(d + "T00:00").getDay() + 6) % 7));
+const isoWeek = (d) => { const x = new Date(d + "T00:00"); x.setDate(x.getDate() + 3 - ((x.getDay() + 6) % 7)); const y = new Date(x.getFullYear(), 0, 4); return 1 + Math.round(((x - y) / 864e5 - 3 + ((y.getDay() + 6) % 7)) / 7); };
+function weekTitle() {
+  const mon = addDays(mondayOf(today()), 7 * wkOff), sun = addDays(mon, 6), m = (d, o) => new Date(d + "T00:00").toLocaleString(undefined, o);
+  const narrow = matchMedia("(max-width: 600px)").matches; // a phone header has room for "Nov 2026", not "November 2026"
+  return mon.slice(0, 7) === sun.slice(0, 7) ? m(mon, { month: narrow ? "short" : "long", year: "numeric" }) : `${m(mon, { month: "short" })} – ${m(sun, { month: "short", ...(narrow ? {} : { year: "numeric" }) })}`;
+}
+const wkAdd = (d) => { // the "Add a task" line of a day (or of the Inbox, d = "")
+  const li = Object.assign(document.createElement("li"), { className: "wline wadd" });
+  const inp = Object.assign(document.createElement("input"), { type: "text", placeholder: "Add a task", maxLength: 500, autocomplete: "off", enterKeyHint: "done" });
+  inp.setAttribute("aria-label", d ? `Add a task on ${whenLabel({ date: d }, today())}` : "Add a task to the Inbox");
+  inp.dataset.day = d;
+  inp.onkeydown = (e) => {
+    const typed = inp.value.trim();
+    if (e.key === "Escape") { inp.value = ""; inp.blur(); }
+    if (e.key !== "Enter" || !typed) return;
+    const { text, ...when } = d ? parseOn(typed, d) : parseWhen(typed); // "call Sam 3pm" keeps the time on this day; a named day wins over the column
+    tasks.unshift({ id: newId(), text, done: false, u: now(), ...when });
+    commit();
+    list.querySelector(`.wadd input[data-day="${d}"]`)?.focus();
+  };
+  li.append(inp);
+  return li;
+};
+function renderWeek(td) {
+  const mon = addDays(mondayOf(td), 7 * wkOff), days = Array.from({ length: 7 }, (_, i) => addDays(mon, i)), end = days[6];
+  const bar = Object.assign(document.createElement("li"), { className: "wbar" });
+  bar.append(Object.assign(document.createElement("span"), { className: "wkn", textContent: `Week ${isoWeek(mon)}` }),
+    btn("‹", "wnav", () => { wkOff--; render(); }, "Previous week"), btn("Today", "wnav wtoday", () => { wkOff = 0; render(); }, "This week"), btn("›", "wnav", () => { wkOff++; render(); }, "Next week"));
+  bar.querySelector(".wtoday").disabled = wkOff === 0;
+  const tasksOn = (d) => tasks.filter((t) => t.date === d).sort((a, b) => a.done - b.done); // array order is the user's order (sort is stable); done ones sink
+  const col = (d) => {
+    const c = Object.assign(document.createElement("div"), { className: `wday${d === td ? " today" : ""}${d < td ? " past" : ""}` });
+    const dt = new Date(d + "T00:00"), h = Object.assign(document.createElement("div"), { className: "wdh" });
+    h.append(Object.assign(document.createElement("span"), { className: "n", textContent: dt.getDate() }), Object.assign(document.createElement("span"), { className: "w", textContent: dt.toLocaleString(undefined, { weekday: "short" }) }));
+    if (d === td) h.append(Object.assign(document.createElement("span"), { className: "tag", textContent: "Today" }));
+    c.append(h);
+    const evs = calOn() ? calDay(d) : [], mine = tasksOn(d);
+    if (evs.length) {
+      const box = Object.assign(document.createElement("div"), { className: "wevs" });
+      for (const o of evs) {
+        const t = now(), live = d === td && !o.allDay && o.start <= t && t < o.end;
+        if (o.allDay) { box.append(Object.assign(document.createElement("div"), { className: "wad", textContent: o.title, title: o.cal.name })); box.lastChild.style.setProperty("--c", o.cal.color); continue; }
+        const e = Object.assign(document.createElement("div"), { className: `wev${live ? " now" : d === td && o.end <= t && o.end > o.start ? " gone" : ""}`, title: `${o.cal.name} · ${span(o, d)}` });
+        e.style.setProperty("--c", o.cal.color);
+        e.append(document.createElement("i"), Object.assign(document.createElement("span"), { className: "tm", textContent: live ? "Now" : span(o, d).split("–")[0] }), Object.assign(document.createElement("span"), { className: "tt", textContent: o.title }));
+        box.append(e);
+      }
+      c.append(box);
+      if (mine.length) c.append(Object.assign(document.createElement("div"), { className: "wsep" }));
+    }
+    const ul = Object.assign(document.createElement("ul"), { className: "wtasks" });
+    ul.dataset.drop = d;
+    ul.append(...mine.map((t) => row(t, td)), wkAdd(d));
+    const we = [5, 6].includes((dt.getDay() + 6) % 7), fill = Math.max(0, (we ? 3 : 7) - mine.length - 1); // ruled lines down to an even height
+    for (let i = 0; i < fill; i++) { const f = Object.assign(document.createElement("li"), { className: "wline wfill" }); f.onclick = () => ul.querySelector(".wadd input").focus(); ul.append(f); }
+    c.append(ul);
+    if (we) c.classList.add("we");
+    return c;
+  };
+  const grid = Object.assign(document.createElement("li"), { className: "wgrid" }), wk = Object.assign(document.createElement("div"), { className: "wkend" });
+  wk.append(col(days[5]), col(days[6]));
+  grid.append(...days.slice(0, 5).map(col), wk);
+  // below the week: the Inbox (drag in to schedule, out to unschedule) and what comes after this week
+  const below = Object.assign(document.createElement("li"), { className: "wbelow" });
+  const sect = (name, items, drop, add) => {
+    const s = Object.assign(document.createElement("div"), { className: "wsect" }), ul = Object.assign(document.createElement("ul"), { className: "wtasks" });
+    if (drop !== null) ul.dataset.drop = drop;
+    ul.append(...items.map((t) => row(t, td)), ...(add ? [wkAdd("")] : []));
+    s.append(Object.assign(document.createElement("h3"), { textContent: name }), ul);
+    return s;
+  };
+  const later = tasks.filter((t) => !t.done && t.date > end).sort(byDate).slice(0, 8);
+  below.append(sect("Inbox · no date", tasks.filter((t) => !t.done && !t.date && !areaOf(t)), "", true), sect("Later", later, null, false));
+  list.append(bar, grid, below);
+}
+// Week drag: its own, since a task moves across columns. Mouse: after 6px. Touch: hold 300 ms, so swiping still scrolls.
+let wdrag = null;
+const wdClear = () => list.querySelectorAll(".wover, .wover-end").forEach((x) => x.classList.remove("wover", "wover-end"));
+function wdStart(d) {
+  clearTimeout(d.timer);
+  d.on = true; navigator.vibrate?.(8);
+  const r = d.li.getBoundingClientRect();
+  d.ghost = Object.assign(d.li.cloneNode(true), { className: "wlift" });
+  Object.assign(d.ghost.style, { width: `${r.width}px`, left: `${r.left}px`, top: `${r.top}px` });
+  d.dx = d.x0 - r.left; d.dy = d.y0 - r.top;
+  document.body.append(d.ghost);
+  d.li.classList.add("wghost");
+  try { d.li.setPointerCapture(d.pid); } catch {}
+  getSelection()?.removeAllRanges();
+}
+list.addEventListener("pointerdown", (e) => {
+  if (view !== "week" || e.button > 0) return;
+  const li = e.target.closest("li[data-id]");
+  if (!li || e.target.closest("button, input, a") || e.target.isContentEditable) return;
+  wdrag = { li, id: li.dataset.id, pid: e.pointerId, x0: e.clientX, y0: e.clientY, on: false, touch: e.pointerType !== "mouse" };
+  if (wdrag.touch) { const d = wdrag; d.timer = setTimeout(() => wdStart(d), 300); }
+});
+list.addEventListener("pointermove", (e) => {
+  const d = wdrag;
+  if (!d) return;
+  if (!d.on) {
+    if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 6) return;
+    if (d.touch) { clearTimeout(d.timer); wdrag = null; return; } // a scroll
+    wdStart(d);
+  }
+  Object.assign(d.ghost.style, { left: `${e.clientX - d.dx}px`, top: `${e.clientY - d.dy}px` });
+  wdClear();
+  const zone = document.elementFromPoint(e.clientX, e.clientY)?.closest("ul[data-drop]");
+  d.zone = zone; d.before = null;
+  if (zone) {
+    const rows = [...zone.querySelectorAll(":scope > li[data-id]")].filter((x) => x !== d.li);
+    d.before = rows.find((x) => { const r = x.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; }) ?? null;
+    (d.before ?? zone.querySelector(".wadd")).classList.add(d.before ? "wover" : "wover-end");
+  }
+  if (e.clientY < 70) scrollBy(0, -10); else if (e.clientY > innerHeight - 70) scrollBy(0, 10);
+});
+list.addEventListener("touchmove", (e) => { if (wdrag?.on) e.preventDefault(); }, { passive: false });
+const wdEnd = (e) => {
+  const d = wdrag;
+  if (!d) return;
+  clearTimeout(d.timer); wdrag = null;
+  if (!d.on) return; // a plain click
+  d.ghost.remove(); d.li.classList.remove("wghost"); wdClear();
+  const eat = (c) => c.stopPropagation();
+  addEventListener("click", eat, true); setTimeout(() => removeEventListener("click", eat, true), 0);
+  if (e.type !== "pointerup" || !d.zone) return render();
+  const m = tasks.find((t) => t.id === d.id), to = d.zone.dataset.drop;
+  if (!m) return render();
+  if (to) m.date = to; else { delete m.date; delete m.tm; delete m.ev; delete m.rep; } // into the Inbox: no date, so no time or repeat either
+  touch(m);
+  const rows = [...d.zone.querySelectorAll(":scope > li[data-id]")].map((x) => x.dataset.id).filter((id) => id !== d.id);
+  if (d.before) tasks = move(tasks, d.id, d.before.dataset.id, true);
+  else if (rows.length) tasks = move(tasks, d.id, rows[rows.length - 1], false);
+  meta.ou = now(); save(); queue(); render();
+};
+list.addEventListener("pointerup", wdEnd);
+list.addEventListener("pointercancel", wdEnd);
 
 // Board: one column per area (tasks with no area sit in Inbox), a project's tasks under its name. Rows are the same rows as everywhere else.
 function renderBoard(mine, td) {
@@ -256,9 +399,11 @@ function render() {
   list.classList.toggle("up", view === "upcoming");
   $("back").hidden = !trail.length;
   list.classList.toggle("board", view === "board"); document.body.classList.toggle("board", view === "board");
+  list.classList.toggle("week", view === "week"); document.body.classList.toggle("week", view === "week");
   const EMPTY = { inbox: "Inbox is empty. Dump a thought above.", today: "Nothing for today. Give a task a date to see it here.", upcoming: "Nothing scheduled. Give a task a future date to see it here.", done: "Nothing completed yet.", all: "No open tasks." };
-  if (!mine.length && view !== "board" && !(isArea() && cur()?.subs.length)) list.innerHTML = `<div class="empty">${EMPTY[view] ?? "This area is empty."}</div>`;
+  if (!mine.length && view !== "board" && view !== "week" && !(isArea() && cur()?.subs.length)) list.innerHTML = `<div class="empty">${EMPTY[view] ?? "This area is empty."}</div>`;
   if (view === "board") renderBoard(mine, td);
+  else if (view === "week") renderWeek(td);
   else if (view === "all") renderAll(mine, td);
   else if (view === "done") {
     let last = "";
@@ -373,6 +518,7 @@ const ICON = { // 24px stroke icons, drawn by style.css
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   all: '<rect x="4" y="10" width="16" height="10" rx="2.500"/><path d="M7 5.500h10"/>',
   task: '<circle cx="12" cy="12" r="7.5"/>',
+  week: '<rect x="3.500" y="5" width="17" height="15" rx="2"/><path class="cut" d="M3.500 10h17"/><path d="M9.200 10v10M14.800 10v10"/>',
   board: '<rect x="4" y="4" width="4" height="15" rx="1"/><rect x="10" y="4" width="4" height="9" rx="1"/><rect x="16" y="4" width="4" height="12" rx="1"/>',
   flag: '<path d="M6 21V4M6 5h11l-2 4 2 4H6"/>',
   chev: '<path d="M9 6l6 6-6 6"/>', // points right; .open turns it down
@@ -392,7 +538,7 @@ function renderTabs(counts) {
   };
   const gap = () => Object.assign(document.createElement("div"), { className: "gap" });
   $("tabs").replaceChildren(
-    item("inbox", "Inbox", "inbox"), item("today", "Today", "today"), item("upcoming", "Upcoming", "upcoming"), item("all", "Anytime", "all"), item("board", "Board", "board"), item("done", "Done", "done"), gap(),
+    item("inbox", "Inbox", "inbox"), item("today", "Today", "today"), item("upcoming", "Upcoming", "upcoming"), item("week", "Week", "week"), item("all", "Anytime", "all"), item("board", "Board", "board"), item("done", "Done", "done"), gap(),
     ...meta.lists.map((l) => { // an area with its subareas under it; the caret hides them
       const g = Object.assign(document.createElement("div"), { className: "ngrp" }), shut = navShut.has(l.id);
       g.dataset.lid = l.id;
@@ -408,7 +554,7 @@ function renderTabs(counts) {
     }), ...(meta.lists.length ? [gap()] : []),
     Object.assign(item("", "New area", "add", newArea), { className: "nav new" }),
   );
-  $("vt").replaceChildren(...(ICON[view] && isArea() === false ? [svg(view)] : []), { inbox: "Inbox", today: "Today", upcoming: "Upcoming", done: "Done", board: "Board", all: "Anytime" }[view] ?? (vSub() ? cur()?.subs.find((s) => s.id === vSub())?.name : cur()?.name) ?? "");
+  $("vt").replaceChildren(...(ICON[view] && isArea() === false ? [svg(view)] : []), { inbox: "Inbox", today: "Today", upcoming: "Upcoming", week: weekTitle(), done: "Done", board: "Board", all: "Anytime" }[view] ?? (vSub() ? cur()?.subs.find((s) => s.id === vSub())?.name : cur()?.name) ?? "");
 }
 // Drag an area up or down in the sidebar. Touch: hold 300 ms first, so a plain swipe still scrolls.
 let swallow = false;
@@ -590,6 +736,7 @@ $("f").onsubmit = (e) => {
 };
 
 list.addEventListener("change", (e) => {
+  if (e.target.type !== "checkbox") return; // the week's and board's add boxes are text inputs in the list too
   const t = byId(e.target);
   if (e.target.dataset.c) { // a checklist item
     t.c.find((c) => c.id === e.target.dataset.c).done = e.target.checked;
@@ -789,7 +936,7 @@ const startDrag = (d) => {
 };
 list.addEventListener("pointerdown", (e) => {
   const li = e.target.closest("li[data-id]");
-  if (view === "board" || view === "all" || !li || li.classList.contains("future") || e.button > 0 || e.target.closest("button, input, a") || e.target.isContentEditable) return;
+  if (view === "board" || view === "all" || view === "week" || !li || li.classList.contains("future") || e.button > 0 || e.target.closest("button, input, a") || e.target.isContentEditable) return;
   drag = { id: li.dataset.id, li, pid: e.pointerId, y: e.clientY, x0: e.clientX, y0: e.clientY, on: false, over: null, before: false, touch: e.pointerType !== "mouse" };
   if (drag.touch) { const d = drag; d.timer = setTimeout(() => { navigator.vibrate?.(8); startDrag(d); }, 300); }
 });
@@ -1022,7 +1169,7 @@ const calDay = (d) => meta.cals.list.flatMap((c) => onDay(calCache[c.id]?.url ==
 async function loadCals(force = false) {
   if (!calOn() || calBusy) return;
   calBusy = true;
-  const td = today(), from = addDays(td, -1), to = addDays(td, 31);
+  const td = today(), from = addDays(td, -7), to = addDays(td, 42); // the week view pages a week back and a few ahead
   let renamed = false;
   try {
     await Promise.all(meta.cals.list.map(async (c) => {
@@ -1249,7 +1396,7 @@ const rollover = () => { // a new day, or a reminder time that passed since the 
 };
 addEventListener("online", () => queue(500));
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { rollover(); queue(300); } });
-setInterval(() => { if (document.visibilityState === "visible") { rollover(); queue(0); if (calOn() && !busy() && !drag && (view === "today" || view === "upcoming")) render(); } }, 60000); // pick up changes from other devices while the app stays open; "Now" in the calendar moves on
+setInterval(() => { if (document.visibilityState === "visible") { rollover(); queue(0); if (calOn() && !busy() && !drag && (view === "today" || view === "upcoming" || view === "week")) render(); } }, 60000); // pick up changes from other devices while the app stays open; "Now" in the calendar moves on
 setInterval(() => { if (document.visibilityState === "visible") loadCals(); }, 5 * 60000); // each feed refreshes when older than 15 minutes
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadCals(); });
 loadCals();
@@ -1269,7 +1416,7 @@ const kscore = (name, q) => { // 0 = no match; a prefix beats a word start, whic
 };
 function kdraw() {
   const q = kq.value.trim().toLowerCase();
-  const all = [["inbox", "Inbox", "inbox"], ["today", "Today", "today"], ["upcoming", "Upcoming", "upcoming"], ["all", "Anytime", "all"], ["board", "Board", "board"], ["done", "Done", "done"],
+  const all = [["inbox", "Inbox", "inbox"], ["today", "Today", "today"], ["upcoming", "Upcoming", "upcoming"], ["week", "Week", "week"], ["all", "Anytime", "all"], ["board", "Board", "board"], ["done", "Done", "done"],
     ...meta.lists.flatMap((l) => [[l.id, l.name, "area"], ...l.subs.map((s) => [`${l.id}|${s.id}`, `${l.name} › ${s.name}`, "area"])])];
   kitems = all.map((x) => ({ x, s: kscore(x[1], q) })).filter((m) => m.s).sort((a, b) => b.s - a.s).map((m) => m.x); // sort is stable: equal scores keep sidebar order
   if (q) kitems.push(...tasks.filter((t) => t.text.toLowerCase().includes(q)).sort((a, b) => a.done - b.done || b.u - a.u).slice(0, 8).map((t) => [`task:${t.id}`, t.text, t.done ? "done" : "task", t.done ? "Done" : placeOf(t).l?.name ?? "Inbox"])); // tasks only once you type; open ones first, newest first
@@ -1311,7 +1458,7 @@ addEventListener("keydown", (e) => {
     if (kd.open) return kd.close();
     kopen();
   }
-  const go = { Digit1: "inbox", Digit2: "today", Digit3: "upcoming" }[e.code];
+  const go = { Digit1: "inbox", Digit2: "today", Digit3: "upcoming", Digit4: "week" }[e.code];
   if (go && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && !document.querySelector("dialog[open]")) { e.preventDefault(); setView(go); }
 });
 function kopen() {

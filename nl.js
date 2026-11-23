@@ -39,7 +39,8 @@ const RULES = [
   }],
 ].map(([re, fn]) => [new RegExp(`(?:^|\\s)(?:(?:on|at|by|for|due)\\s+)?${re.source}\\s*$`, "i"), fn]);
 
-export function parseWhen(input, now = new Date()) {
+// The date and time phrases at the end of the text, without filling in anything not typed: { text, out } or null.
+function scan(input, now) {
   const ctx = { now, td: today(now) }, out = {};
   let text = input.trim();
   for (let again = true; again;) {
@@ -54,7 +55,13 @@ export function parseWhen(input, now = new Date()) {
     }
   }
   text = text.replace(/[\s,;:-]+$/, "");
-  if (!text || !(out.date || out.tm)) return { text: input.trim() }; // nothing found, or nothing left of the task
+  return text && (out.date || out.tm) ? { text, out, ctx } : null; // nothing found, or nothing left of the task
+}
+
+export function parseWhen(input, now = new Date()) {
+  const r = scan(input, now);
+  if (!r) return { text: input.trim() };
+  const { text, out, ctx } = r;
   if (out.tm && !out.date) out.date = out.tm > `${pad(now.getHours())}:${pad(now.getMinutes())}` ? ctx.td : addDays(ctx.td, 1); // a time already past means tomorrow
   return { text, ...out };
 }
@@ -67,4 +74,10 @@ export function fromCapture(i, now = new Date()) {
   const at = Number.isFinite(i.at) ? new Date(i.at) : now;
   const { text, ...when } = link ? { text: label(s) } : parseWhen(first, at);
   return { id: i.id, text: text.slice(0, 500), done: false, ...(i.to === "today" && !when.date ? { date: today(at) } : {}), ...when, ...(n ? { n: n.slice(0, 5000) } : {}) };
+}
+
+// Text typed on a given day (the week view's day columns): a time alone stays on that day; a named day wins.
+export function parseOn(input, day, now = new Date()) {
+  const r = scan(input, now);
+  return r ? { text: r.text, ...r.out, date: r.out.date ?? day } : { text: input.trim(), date: day };
 }

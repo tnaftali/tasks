@@ -72,3 +72,10 @@ test("parseWhen: a bare hour after 'at'", () => {
   assert.deepEqual(p("room 11"), { text: "room 11" }); // no "at": not a time
   assert.equal(fromCapture({ id: "a", text: "something wednesday at 11", to: "today" }, NOW).date, "2026-11-11"); // the named day beats the Today URL
 });
+
+test("parseOn: a day column keeps a bare time on its own day; a named day wins", async () => {
+  const { parseOn } = await import("./nl.js");
+  assert.deepEqual(parseOn("water plants 18:00", "2026-11-25", NOW), { text: "water plants", tm: "18:00", date: "2026-11-25" });
+  assert.deepEqual(parseOn("water plants", "2026-11-25", NOW), { text: "water plants", date: "2026-11-25" });
+  assert.deepEqual(parseOn("dentist fri at 10", "2026-11-25", NOW), { text: "dentist", tm: "10:00", date: "2026-11-13" });
+});
