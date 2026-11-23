@@ -109,6 +109,10 @@ li.sec.head { padding-top: 14px; font: 600 12px var(--sans); letter-spacing: .06
 li.sec.head .hx { opacity: 0; font-size: 20px; padding: 6px 10px; }
 li.sec.head:hover .hx { opacity: 1; }
 @media (hover: none) { li.sec.head .hx { opacity: 1; } }
+/* Projects read as blocks (a line and room above each); a heading inside one is a divider (its name, then a hairline to the edge) */
+#list:not(.board) li.sec.sub:not(:first-child) { margin-top: 22px; padding-top: 26px; border-top: 1px solid var(--border); }
+#list:not(.board) li.sec.head.in .hn { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; text-align: left; }
+#list:not(.board) li.sec.head.in .hn::after { content: ""; flex: 1; height: 1px; background: var(--border-strong); }
 li.sec + li { border-top: 0; }
 li.sec[data-ev] + li { border-top: 1px solid var(--border); padding-top: 12px; }
 .area { flex: 0 1 auto; max-width: 34%; margin: 0; padding: 1px 0 0 8px; background: none; border: 0; border-radius: 4px; color: var(--faint); font: 13px/1.4 var(--sans); cursor: pointer; appearance: none; -webkit-appearance: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
