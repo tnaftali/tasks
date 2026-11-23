@@ -490,10 +490,11 @@ const hl = Object.assign(document.createElement("ul"), { className: "hl", role: 
 hl.setAttribute("aria-label", "Areas and projects");
 let pick = null, hitems = [], hfocus = 0, hostEl = null;
 // The sheet's Area box is the same popup as a combobox: no "#", the whole text filters, and focusing it lists everything.
-const HASH = "#in, #wtitle, #wlist, .cadd";
+const HASH = "#in, #wtitle, #wlist, #qlist, .cadd";
+const combo = (el) => el?.id === "wlist" || el?.id === "qlist"; // the sheet's Area box and the right-click menu's
 const hfield = (e) => e.target.closest?.(HASH);
 const hval = (el) => (el.isContentEditable ? el.textContent : el.value);
-const hq = (el) => (el.id === "wlist" ? { 2: el.dataset.q ?? "" } : /(^|\s)#([^\s#]*)$/.exec(hval(el)));
+const hq = (el) => (combo(el) ? { 2: el.dataset.q ?? "" } : /(^|\s)#([^\s#]*)$/.exec(hval(el)));
 function setPick(p) { pick = p; pk.hidden = !p; if (p) pk.textContent = `${p.name} ×`; }
 function colPick(add, p) { // the chip under a board column's box
   add.pick = p;
@@ -502,7 +503,7 @@ function colPick(add, p) { // the chip under a board column's box
 }
 function hdraw() {
   const m = hostEl && hq(hostEl), q = m?.[2].toLowerCase() ?? "";
-  hitems = !m ? [] : [...(hostEl.id === "wlist" ? [{ l: "", name: "No area" }] : []), ...meta.lists.flatMap((l) => [{ l: l.id, name: l.name }, ...l.subs.map((s) => ({ l: l.id, s: s.id, name: `${l.name} › ${s.name}` }))])]
+  hitems = !m ? [] : [...(combo(hostEl) ? [{ l: "", name: "No area" }] : []), ...meta.lists.flatMap((l) => [{ l: l.id, name: l.name }, ...l.subs.map((s) => ({ l: l.id, s: s.id, name: `${l.name} › ${s.name}` }))])]
     .map((p) => ({ p, s: kscore(p.name, q) })).filter((x) => x.s).sort((a, b) => b.s - a.s).map((x) => x.p);
   hfocus = Math.min(hfocus, Math.max(hitems.length - 1, 0));
   hl.hidden = !hitems.length;
@@ -520,6 +521,7 @@ function hpick(p) {
   const el = hostEl, was = hval(el), text = was.replace(/(^|\s)#[^\s#]*$/, "$1").trimEnd();
   hostEl = null; hdraw();
   const v = p.s ? `${p.l}|${p.s}` : p.l;
+  if (el.id === "qlist") { edited((t) => setPlace(t, v)); qm.hidden = true; return; } // picked: the menu is done
   if (el.id === "wlist") { edited((t) => setPlace(t, v)); fillWhen(tasks.find((x) => x.id === wid)); }
   else if (el === nin) { nin.value = text; setPick(p); }
   else if (el.classList.contains("cadd")) { el.value = text; colPick(el, p); }
@@ -530,18 +532,18 @@ function hpick(p) {
   }
   el.focus();
 }
-document.addEventListener("input", (e) => { const el = hfield(e); if (el) { hostEl = el; hfocus = 0; if (el.id === "wlist") el.dataset.q = el.value.trim(); hdraw(); } });
-document.addEventListener("focusin", (e) => { const el = hfield(e); if (el?.id === "wlist") { el.dataset.q = ""; el.select(); hostEl = el; hfocus = 0; hdraw(); } });
+document.addEventListener("input", (e) => { const el = hfield(e); if (el) { hostEl = el; hfocus = 0; if (combo(el)) el.dataset.q = el.value.trim(); hdraw(); } });
+document.addEventListener("focusin", (e) => { const el = hfield(e); if (combo(el)) { el.dataset.q = ""; el.select(); hostEl = el; hfocus = 0; hdraw(); } });
 document.addEventListener("focusout", (e) => {
   const el = hfield(e);
   if (!el) return;
   hostEl = null; hdraw();
-  if (el.id === "wlist") { const t = tasks.find((x) => x.id === wid); if (t) el.value = placeName(t); } // text typed but not picked is dropped
+  if (combo(el)) { const t = tasks.find((x) => x.id === wid); if (t) el.value = placeName(t); } // text typed but not picked is dropped
 });
 $("fab").onclick = () => { scrollTo({ top: 0 }); $("in").focus(); }; // inside the tap, so the phone opens the keyboard
 document.addEventListener("keydown", (e) => { // capture: while the popup is open it owns these keys, before the field's own Enter handler adds the task
   const el = hfield(e);
-  if (hl.hidden && el?.id === "wlist" && e.key === "ArrowDown") { el.dataset.q = ""; hostEl = el; hfocus = 0; hdraw(); e.preventDefault(); return; }
+  if (hl.hidden && combo(el) && e.key === "ArrowDown") { el.dataset.q = ""; hostEl = el; hfocus = 0; hdraw(); e.preventDefault(); return; }
   if (hl.hidden || el !== hostEl || e.ctrlKey || e.metaKey) return; // Ctrl+Enter is the sheet's Done
   const k = e.key;
   if (k === "ArrowDown" || k === "ArrowUp") hfocus = (hfocus + (k === "ArrowDown" ? 1 : -1) + hitems.length) % hitems.length, hdraw();
@@ -649,7 +651,8 @@ function fillWhen(t) {
   $("rn").value = t.rep?.n ?? 1;
   $("rmode").value = t.rep?.mode ?? "schedule";
   $("wlistrow").hidden = !meta.lists.length;
-  $("wlist").value = placeName(t);
+  $("wlist").value = $("qlist").value = placeName(t);
+  $("qlistrow").hidden = !meta.lists.length;
   const td = today(); // the shortcut that matches the task's date shows as pressed
   const on = { today: t.date === td && !t.ev, evening: t.date === td && !!t.ev, tomorrow: t.date === addDays(td, 1), monday: t.date === nextMonday(td), clear: !t.date };
   document.querySelectorAll("[data-d]").forEach((b) => b.setAttribute("aria-pressed", String(on[b.dataset.d])));
@@ -686,7 +689,7 @@ $("wtime").onchange = () => {
   $("wtime").value = !s ? "" : m && +m[1] < 24 && +(m[2] ?? 0) < 60 ? `${m[1].padStart(2, "0")}:${m[2] ?? "00"}` : tasks.find((x) => x.id === wid)?.tm ?? "";
   applyWhen();
 };
-// Right-click a task: the sheet's date and time controls in a small menu at the pointer. It edits through the hidden sheet's fields, so both share applyWhen.
+// Right-click a task: the sheet's date, time and area controls in a small menu at the pointer. It edits through the hidden sheet's fields, so both share applyWhen.
 list.addEventListener("contextmenu", (e) => {
   const li = e.target.closest("li[data-id]"), t = li && tasks.find((x) => x.id === li.dataset.id);
   if (!t || document.querySelector("dialog[open]")) return;
@@ -697,7 +700,7 @@ list.addEventListener("contextmenu", (e) => {
   qm.style.top = Math.max(8, Math.min(e.clientY, innerHeight - qm.offsetHeight - 8)) + "px";
 });
 document.addEventListener("pointerdown", (e) => { if (!qm.hidden && !qm.contains(e.target)) qm.hidden = true; });
-addEventListener("keydown", (e) => { if (e.key === "Escape" && !qm.hidden) { qm.hidden = true; e.stopPropagation(); } }, true);
+addEventListener("keydown", (e) => { if (e.key === "Escape" && !qm.hidden && !(hostEl?.id === "qlist" && !hl.hidden)) { qm.hidden = true; e.stopPropagation(); } }, true); // with the area list open, Esc closes the list first
 $("qdate").onchange = () => { $("wdate").value = $("qdate").value; qm.hidden = true; applyWhen(); };
 $("qtime").onchange = () => { $("wtime").value = $("qtime").value; qm.hidden = true; $("wtime").onchange(); };
 $("wtitle").oninput = () => { const v = $("wtitle").value.trim(); if (v) edited((t) => { t.text = v; }); }; // an empty title is not saved: the task keeps its old one
