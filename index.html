@@ -146,58 +146,81 @@
 </dialog>
 <dialog id="dlg" aria-labelledby="dlgt">
   <h2 id="dlgt">Settings</h2>
-  <p class="sub first">Sync</p>
-  <div id="offv">
-    <p>Keep the same tasks on every device. Your tasks are encrypted on this device before they leave it. The server stores only unreadable data.</p>
-    <button class="primary" id="on" type="button">Turn on sync</button>
-    <p class="sub">Already syncing on another device? Paste its sync code or link.</p>
-    <div class="row">
-      <input id="join" placeholder="Sync code or link" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Sync code or link">
-      <button id="joinb" type="button">Join</button>
+  <section class="ss" data-s="cal">
+    <button class="sh" type="button" aria-expanded="false"><svg class="si" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Calendars<span class="stt" id="stt-cal"></span><svg class="sc" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+    <div class="sb"><div class="ns"><p>Needs sync. <button type="button" class="link" data-go="sync">Set up sync</button></p></div><div class="ys">
+      <p>Your events in Today and Upcoming, read-only.</p>
+      <div id="calv"></div>
+      <div class="row calnew">
+        <input id="calu" placeholder="Paste a calendar link" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Calendar link">
+        <button id="cala" type="button">Add</button>
+      </div>
+      <p id="calst" class="st" role="status"></p>
+      <details><summary>Where do I find the link?</summary><p>Google Calendar on a computer: Settings → pick a calendar → Integrate calendar → copy the <b>Secret address in iCal format</b>. Public calendars (holidays) work too. The link is a secret: it's saved encrypted with your tasks, on all your devices.</p></details>
+    </div></div>
+  </section>
+  <section class="ss" data-s="rem">
+    <button class="sh" type="button" aria-expanded="false"><svg class="si" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>Reminders<span class="stt" id="stt-rem"></span><svg class="sc" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+    <div class="sb"><div class="ns"><p>Needs sync. <button type="button" class="link" data-go="sync">Set up sync</button></p></div><div class="ys">
+      <p>A notification at the time of a task, even with the app closed.</p>
+      <div class="row">
+        <button id="remb" type="button">Turn on reminders</button>
+        <button id="remt" type="button" hidden>Send a test</button>
+      </div>
+      <p id="remst" class="st" role="status"></p>
+      <p class="hint">On iPhone, open the app from its Home Screen icon first.</p>
+    </div></div>
+  </section>
+  <section class="ss" data-s="cap">
+    <button class="sh" type="button" aria-expanded="false"><svg class="si" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></svg>Quick capture<span class="stt" id="stt-cap"></span><svg class="sc" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+    <div class="sb"><div class="ns"><p>Needs sync. <button type="button" class="link" data-go="sync">Set up sync</button></p></div><div class="ys">
+      <p>Add tasks from an iPhone Shortcut, a bookmarklet or curl: post text to the link. It can add tasks, not read them.</p>
+      <div class="row">
+        <button id="capc" type="button">Copy Inbox link</button>
+        <button id="capt" type="button">Copy Today link</button>
+      </div>
+      <input id="capv" readonly hidden aria-label="Capture URL" onfocus="this.select()">
+    </div></div>
+  </section>
+  <section class="ss" data-s="sync">
+    <button class="sh" type="button" aria-expanded="false"><svg class="si" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-14.5 4.6M4 12a8 8 0 0 1 14.5-4.6"/><path d="M19 3v4.5h-4.5M5 21v-4.5h4.5"/></svg>Sync<span class="stt" id="stt-sync"></span><svg class="sc" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+    <div class="sb">
+      <div id="offv">
+        <p>Same tasks on all your devices, encrypted before they leave this one. The server stores only unreadable data.</p>
+        <button class="primary" id="on" type="button">Turn on sync</button>
+        <p class="hint">Already syncing on another device? Paste its sync code or link.</p>
+        <div class="row">
+          <input id="join" placeholder="Sync code or link" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Sync code or link">
+          <button id="joinb" type="button">Join</button>
+        </div>
+      </div>
+      <div id="onv" hidden>
+        <p>Same tasks on all your devices, encrypted before they leave this one.</p>
+        <div class="row">
+          <button id="copyl" type="button">Copy link for another device</button>
+          <button id="now" type="button">Sync now</button>
+        </div>
+        <details><summary>Show sync code</summary>
+          <p>Anyone with this code can read and edit your tasks. Share it only with your own devices.</p>
+          <div class="row"><input id="codev" readonly aria-label="Sync code" onfocus="this.select()"><button id="copyc" type="button">Copy code</button></div>
+        </details>
+        <p class="hint">On the other device, open the link, or paste the code under Settings → Sync. On iPhone, join inside the installed app: it keeps its data apart from Safari.</p>
+        <button class="danger" id="offb" type="button">Turn off on this device</button>
+      </div>
     </div>
-  </div>
-  <div id="onv" hidden>
-    <p>Sync is on. This code is the key to your tasks: anyone who has it can read and edit them. Share it only with your own devices.</p>
-    <input id="codev" readonly aria-label="Sync code" onfocus="this.select()">
-    <div class="row">
-      <button id="copyl" type="button">Copy link</button>
-      <button id="copyc" type="button">Copy code</button>
-      <button id="now" type="button">Sync now</button>
+  </section>
+  <section class="ss" data-s="bak">
+    <button class="sh" type="button" aria-expanded="false"><svg class="si" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/></svg>Backup<span class="stt" id="stt-bak"></span><svg class="sc" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+    <div class="sb">
+      <p>Save all your tasks and areas to a file, or restore them from one.</p>
+      <div class="row">
+        <button id="export" type="button">Export</button>
+        <button id="import" type="button">Import</button>
+      </div>
+      <input id="file" type="file" accept="application/json,.json" hidden>
     </div>
-    <p class="sub">Reminders</p>
-    <p>Get a notification at the time of a task. On iPhone, open the app from its Home Screen icon first.</p>
-    <div class="row">
-      <button id="remb" type="button">Turn on reminders</button>
-      <button id="remt" type="button" hidden>Send a test</button>
-    </div>
-    <p id="remst" class="st" role="status"></p>
-    <p class="sub">Quick capture</p>
-    <p>Send a link or text here from an iPhone Shortcut, a bookmarklet or curl. Post it to the capture URL. The URL can add tasks, not read them. They arrive on the next sync. The Inbox URL files them in the Inbox. The Today URL puts them in Today.</p>
-    <div class="row">
-      <button id="capc" type="button">Inbox URL</button>
-      <button id="capt" type="button">Today URL</button>
-    </div>
-    <input id="capv" readonly hidden aria-label="Capture URL" onfocus="this.select()">
-    <p class="sub">Calendars</p>
-    <p>Show your events in Today and Upcoming, read-only. In Google Calendar on a computer: Settings → pick a calendar → Integrate calendar → copy the <b>Secret address in iCal format</b>. The link is saved encrypted with your tasks, on all your devices.</p>
-    <div id="calv"></div>
-    <div class="row calnew">
-      <input id="calu" placeholder="Secret iCal link" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Secret iCal link">
-      <input id="caln" placeholder="Name (optional)" autocomplete="off" maxlength="40" aria-label="Calendar name">
-      <button id="cala" type="button">Add</button>
-    </div>
-    <p id="calst" class="st" role="status"></p>
-    <p class="sub">On your other device: open the link, or open Settings → paste the code. On iPhone the installed app and Safari keep separate data, so join inside the app.</p>
-    <button class="danger" id="offb" type="button">Turn off on this device</button>
-  </div>
+  </section>
   <p id="st" class="st" role="status"></p>
-  <p class="sub">Backup</p>
-  <p>Save all your tasks and areas to a file, or replace them from one.</p>
-  <div class="row">
-    <button id="export" type="button">Export</button>
-    <button id="import" type="button">Import</button>
-  </div>
-  <input id="file" type="file" accept="application/json,.json" hidden>
   <button class="close" id="close" type="button">Close</button>
 </dialog>
 </body>

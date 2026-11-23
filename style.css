@@ -134,16 +134,44 @@ li.sec + li { border-top: 0; }
 #list > li.ev.up .w { margin-right: 51px; } /* lines up with the date chips of the tasks below */
 #list > li.calend { min-height: 0; height: 0; margin: 10px 0 12px; padding: 0; background: none; border-top: 1px solid var(--border); }
 #list > li.calend.up { margin: 6px 0 6px 28px; } /* within a day: starts at the titles, lighter than the day break */
-#calv { display: grid; gap: 6px; margin-bottom: 8px; }
-.calr { display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 4px 8px; }
-.calr input[type=color] { width: 36px; height: 36px; padding: 2px; margin: 0; border: 1px solid var(--border); border-radius: 8px; background: none; cursor: pointer; }
-.calr input[type=text] { margin: 0; }
-.calr .calinfo { grid-column: 2 / -1; font-size: 13px; color: var(--faint); }
+/* Settings: one card per section; a header row (icon, name, state, chevron) opens it, one at a time */
+#dlg .ss { margin: 0 0 8px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); overflow: hidden; }
+#dlg .sh { display: flex; align-items: center; gap: 12px; width: 100%; height: auto; margin: 0; padding: 12px 14px; background: none; border: 0; border-radius: 0; color: var(--text); font: 600 15px var(--sans); text-align: left; cursor: pointer; }
+#dlg .sh:hover { background: var(--well); }
+#dlg .sh .si { flex: none; width: 20px; height: 20px; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#dlg .sh .stt { margin-left: auto; font: 500 13px var(--sans); color: var(--faint); }
+#dlg .sh .stt.on { color: var(--green); }
+#dlg .sh .stt.bad { color: var(--red); }
+#dlg .sh .sc { flex: none; width: 16px; height: 16px; fill: none; stroke: var(--faint); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+#dlg .ss.open .sh .sc { transform: rotate(90deg); }
+#dlg .sb { display: none; padding: 2px 14px 14px 46px; }
+#dlg .ss.open .sb { display: block; }
+#dlg .sb p { margin: 0 0 10px; font-size: 14px; color: var(--muted); }
+#dlg .sb p.hint, #dlg .sb details { margin: 10px 0 0; font-size: 13px; color: var(--faint); }
+#dlg .sb details summary { cursor: pointer; }
+#dlg .sb details p { margin: 6px 0 8px; font-size: 13px; color: var(--faint); }
+#dlg .sb .danger { margin-top: 14px; }
+#dlg .sb .st:empty { display: none; }
+#dlg .sb .st { margin: 8px 0 0; }
+#dlg.nosync .ys, #dlg:not(.nosync) .ns { display: none; }
+#dlg .link { height: auto; padding: 0; background: none; border: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
+#dlg > #st:empty { display: none; }
+#calv { display: grid; margin-bottom: 4px; }
+.calr { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; column-gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.calr input[type=color] { width: 22px; height: 22px; padding: 0; margin: 0 auto; border: 0; border-radius: 6px; background: none; cursor: pointer; }
+.calr input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+.calr input[type=color]::-webkit-color-swatch { border: 0; border-radius: 6px; }
+.calr input[type=color]::-moz-color-swatch { border: 0; border-radius: 6px; }
+.calr input[type=text] { height: 30px; margin: 0; padding: 0 6px; background: none; border: 1px solid transparent; border-radius: 6px; color: var(--text); font: 15px var(--sans); }
+.calr input[type=text]:hover { border-color: var(--border); }
+.calr input[type=text]:focus { border-color: var(--accent); outline: none; background: var(--panel); }
+.calr .calinfo { grid-column: 2 / -1; padding: 0 7px; font-size: 12px; color: var(--faint); }
 .calr .calinfo.bad { color: var(--red); }
-.calr .calx { width: 36px; height: 36px; display: grid; place-items: center; background: none; border: 0; color: var(--faint); cursor: pointer; }
-.calr .calx svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-.calnew #calu { flex: 2 1 200px; }
-.calnew #caln { flex: 1 1 120px; }
+.calr .calx { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; background: none; border: 0; color: var(--faint); cursor: pointer; }
+.calr .calx svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.calnew { margin-top: 10px; flex-wrap: nowrap; }
+.calnew #calu { flex: 1; min-width: 0; }
+#onv details .row input { flex: 1; min-width: 0; }
 li.sec[data-ev] + li { border-top: 1px solid var(--border); padding-top: 12px; }
 .area { flex: 0 1 auto; max-width: 34%; margin: 0; padding: 1px 0 0 8px; background: none; border: 0; border-radius: 4px; color: var(--faint); font: 13px/1.4 var(--sans); cursor: pointer; appearance: none; -webkit-appearance: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .area:hover { color: var(--text); }

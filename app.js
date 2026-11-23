@@ -1041,7 +1041,7 @@ async function loadCals(force = false) {
     try { localStorage.setItem(CALCACHE, JSON.stringify(calCache)); } catch {}
   } finally { calBusy = false; }
   if (renamed) { meta.cals.u = now(); save(); queue(); }
-  render(); drawCals();
+  render(); if ($("dlg").open) showDialog();
 }
 const hhmm = (ms) => new Date(ms).toTimeString().slice(0, 5);
 function evRow(o, d, td, up) {
@@ -1079,24 +1079,24 @@ function drawCals() {
     const nm = Object.assign(document.createElement("input"), { type: "text", value: c.name, maxLength: 40 });
     nm.setAttribute("aria-label", "Calendar name");
     nm.onchange = () => { const v = nm.value.trim(); if (v) { c.name = v; delete c.auto; meta.cals.u = now(); commit(); } else nm.value = c.name; };
-    const info = Object.assign(document.createElement("span"), { className: `calinfo${st?.err ? " bad" : ""}`, textContent: !st ? "Loading…" : st.err ? `Couldn't load: ${st.err}` : `${st.occ.filter((o) => o.start >= Date.now() - 864e5).length} events this month` });
+    const info = Object.assign(document.createElement("span"), { className: `calinfo${st?.err ? " bad" : ""}`, textContent: !st ? "Loading…" : st.err ? `Couldn't load: ${st.err}` : ((n) => `${n} event${n === 1 ? "" : "s"} this month`)(st.occ.filter((o) => o.start >= Date.now() - 864e5).length) });
     const x = ibtn("x", "calx", async () => {
       if (!(await ask({ title: `Remove ${c.name}?`, text: "Its events stop showing on all your devices. The calendar itself is not touched.", ok: "Remove", danger: true }))) return;
-      meta.cals = { u: now(), list: meta.cals.list.filter((y) => y !== c) }; delete calCache[c.id]; commit(); drawCals();
+      meta.cals = { u: now(), list: meta.cals.list.filter((y) => y !== c) }; delete calCache[c.id]; commit(); showDialog();
     }, "Remove");
     r.append(col, nm, x, info);
     return r;
   }));
 }
 $("cala").onclick = () => {
-  const url = $("calu").value.trim().replace(/^webcal:\/\//i, "https://"), name = $("caln").value.trim();
+  const url = $("calu").value.trim().replace(/^webcal:\/\//i, "https://"), name = ""; // the feed names it; rename in the list
   if (!/^https:\/\/\S+$/.test(url)) { $("calst").textContent = "Paste the calendar's secret iCal link (it starts with https://)."; return; }
   if (meta.cals.list.some((c) => c.url === url)) { $("calst").textContent = "That calendar is already added."; return; }
   if (meta.cals.list.length >= 20) { $("calst").textContent = "20 calendars at most."; return; }
   const used = new Set(meta.cals.list.map((c) => c.color));
   meta.cals = { u: now(), list: [...meta.cals.list, { id: newId(), name: (name || "Calendar").slice(0, 40), url, color: CALCOLORS.find((k) => !used.has(k)) ?? CALCOLORS[meta.cals.list.length % CALCOLORS.length], ...(name ? {} : { auto: true }) }] };
-  $("calu").value = $("caln").value = ""; $("calst").textContent = "";
-  commit(); drawCals(); loadCals(true);
+  $("calu").value = ""; $("calst").textContent = "";
+  commit(); showDialog(); loadCals(true);
 };
 
 function setCode(c) {
@@ -1107,12 +1107,29 @@ function setCode(c) {
   if (c) runSync(); else setStatus("off");
 }
 
+// Settings: one section open at a time, each header showing its state. Calendars, reminders and capture need sync.
+const SETOPEN = "braindump.setopen"; // per device: the section used last
+function openSection(k) {
+  for (const s of document.querySelectorAll("#dlg .ss")) { const on = s.dataset.s === k; s.classList.toggle("open", on); s.querySelector(".sh").setAttribute("aria-expanded", String(on)); }
+  try { localStorage.setItem(SETOPEN, k ?? ""); } catch {}
+}
+for (const s of document.querySelectorAll("#dlg .ss")) s.querySelector(".sh").onclick = () => openSection(s.classList.contains("open") ? null : s.dataset.s);
+for (const b of document.querySelectorAll("#dlg [data-go]")) b.onclick = () => openSection(b.dataset.go);
 function showDialog() {
   $("offv").hidden = !!code;
   $("onv").hidden = !code;
   $("codev").value = code ?? "";
   $("remb").textContent = remOn ? "Turn off reminders" : "Turn on reminders";
   $("remt").hidden = !remOn;
+  $("dlg").classList.toggle("nosync", !code);
+  const n = meta.cals.list.length, bad = meta.cals.list.filter((c) => calCache[c.id]?.err).length;
+  $("stt-cal").textContent = !code ? "Needs sync" : bad ? `${bad} not loading` : n ? `${n} calendar${n > 1 ? "s" : ""}` : "None";
+  $("stt-cal").classList.toggle("bad", !!code && !!bad);
+  $("stt-rem").textContent = !code ? "Needs sync" : remOn ? "On" : "Off";
+  $("stt-rem").classList.toggle("on", !!code && remOn);
+  $("stt-cap").textContent = !code ? "Needs sync" : "";
+  $("stt-sync").textContent = code ? "On" : "Off";
+  $("stt-sync").classList.toggle("on", !!code);
   drawCals();
 }
 // ---- Reminders ----
@@ -1183,7 +1200,12 @@ $("remt").onclick = async () => { // one reminder in 5 seconds; the cron job sen
 const copy = (text, btn) => navigator.clipboard?.writeText(text).then(() => { const o = btn.textContent; btn.textContent = "Copied ✓"; setTimeout(() => (btn.textContent = o), 1500); });
 const link = () => `${location.origin}${location.pathname}#sync=${code}`;
 
-$("gear").onclick = () => { showDialog(); $("dlg").showModal(); };
+$("gear").onclick = () => {
+  showDialog();
+  let last = ""; try { last = localStorage.getItem(SETOPEN) ?? ""; } catch {}
+  openSection(!code ? "sync" : last || null); // sync off: start where it gets turned on
+  $("dlg").showModal();
+};
 $("refresh").onclick = () => (code ? runSync() : $("gear").click()); // sync off: open the settings to turn it on
 $("close").onclick = () => $("dlg").close();
 $("on").onclick = () => setCode(newCode());
