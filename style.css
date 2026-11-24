@@ -483,7 +483,7 @@ body.week main { max-width: none; }
 #list.week { --wline: 40px; }
 #list.week > li { display: block; min-height: 0; padding: 0; background: none; border: 0; cursor: default; }
 #list.week li.future { opacity: 1; }
-#list.week > li.wbar { display: flex; align-items: center; gap: 8px; margin: -6px 0 18px; }
+#list.week > li.wbar { display: flex; align-items: center; gap: 8px; margin: 2px 0 18px; } /* clear of the sticky header above */
 .wbar .wkn { margin-right: auto; padding: 4px 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--border); color: var(--muted); font: 600 13px var(--sans); }
 .wbar .wnav { height: 36px; min-width: 36px; padding: 0 12px; border-radius: 18px; border: 1px solid var(--border); background: none; color: var(--text); font: 600 15px var(--sans); cursor: pointer; }
 .wbar .wnav:hover { background: var(--panel); }
