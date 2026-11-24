@@ -249,10 +249,25 @@ export function merge(a, b) {
     const cur = byId.get(t.id);
     if (!cur || t.u >= cur.u) byId.set(t.id, t);
   }
+  // A "missed" copy of a repeating task (id@date, made by spawnMissed, never touched) that only one side has, made from that side's
+  // older copy of the repeating task: the side with the newer repeating task knows better. Those days were done there (ticking it off
+  // moves its date on and makes no copy), or the task was deleted. If they were really missed, the next draw spawns them again from
+  // the merged task. Without this, a device opened after a few days brings back days another device already ticked off.
+  const ids = [new Set(a.tasks.map((t) => t.id)), new Set(b.tasks.map((t) => t.id))];
+  const stale = (t) => {
+    if (!t.id.includes("@") || t.done || t.u !== (Date.parse(t.date) || 0)) return false; // done or edited: someone's work, keep it
+    const onA = ids[0].has(t.id), onB = ids[1].has(t.id);
+    if (onA === onB) return false; // both sides have it
+    const [mine, other] = onA ? [a, b] : [b, a], baseId = t.id.slice(0, t.id.lastIndexOf("@"));
+    const m0 = mine.tasks.find((x) => x.id === baseId), m1 = other.tasks.find((x) => x.id === baseId);
+    if ((other.tomb[baseId] ?? 0) > (m0?.u ?? 0)) return true; // the repeating task was deleted after this copy of it
+    return !!m0 && !!m1 && m1.u > m0.u;
+  };
+  for (const [id, t] of byId) if (stale(t)) byId.delete(id);
   const [win, lose] = a.ou >= b.ou ? [a, b] : [b, a];
   const known = new Set(win.tasks.map((t) => t.id));
   const order = [...lose.tasks.map((t) => t.id).filter((id) => !known.has(id)), ...win.tasks.map((t) => t.id)];
-  const tasks = order.map((id) => byId.get(id)).filter((t) => t.u > (tomb[t.id] ?? -1));
+  const tasks = order.map((id) => byId.get(id)).filter((t) => t && t.u > (tomb[t.id] ?? -1)); // t is missing for a dropped stale copy
   const [la, lb] = [a.lists ?? [], b.lists ?? []], lmap = new Map();
   for (const l of [...lb, ...la]) { const c = lmap.get(l.id); if (!c || l.u >= c.u) lmap.set(l.id, l); } // newest rename wins
   // the side with the newer order (ou) sets the list order

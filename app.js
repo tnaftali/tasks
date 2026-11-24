@@ -377,7 +377,9 @@ function renderAll(mine, td) {
 }
 let drawn = 0; // when the list was last drawn
 function render() {
-  if (spawnMissed(tasks, meta.tomb, today()) | resetEvening(tasks, today())) { save(); queue(); } // missed repeats become their own tasks
+  // Missed repeats become their own tasks, but with sync on only once this session has pulled the latest data: a device opened after
+  // a few days must not spawn days another device already ticked off. merge() drops such copies too; this keeps them from flashing up.
+  if (((!code || pulled) && spawnMissed(tasks, meta.tomb, today())) | resetEvening(tasks, today())) { save(); queue(); }
   drawn = now();
   const td = (day = today());
   if (isArea() && !(cur() && (!vSub() || cur().subs.some((s) => s.id === vSub())))) view = "today"; // that area or subarea was deleted, here or on another device
@@ -1075,7 +1077,8 @@ addEventListener("storage", (e) => {
 // ---- Sync ----
 // On when a sync code is stored. Tasks merge with the encrypted copy on the server; see sync.js.
 const LASTSYNC = "braindump.lastsync"; // per device
-let code = null, timer = 0, running = false, lastSync = 0;
+let code = null, timer = 0, running = false, lastSync = 0, pulled = false; // pulled: this session has synced once (or tried and could not)
+const firstPull = () => { if (!pulled) { pulled = true; render(); } }; // now missed repeats may spawn
 try { lastSync = +localStorage.getItem(LASTSYNC) || 0; } catch {}
 try { code = localStorage.getItem(SYNC); } catch {}
 const side = () => ({ tasks, tomb: meta.tomb, ou: meta.ou, lists: meta.lists, cals: meta.cals });
@@ -1098,7 +1101,7 @@ function queue(ms = 3000) {
 
 async function runSync() {
   if (!code || running) return;
-  if (!navigator.onLine) return setStatus("offline");
+  if (!navigator.onLine) { firstPull(); return setStatus("offline"); } // offline: work from what this device has
   if (busy()) return queue(1500);
   running = true; setStatus("syncing");
   const start = sig(side());
@@ -1108,8 +1111,9 @@ async function runSync() {
     const m = merge(side(), out); // folds in edits made while the request ran
     if (sig(m) !== sig(side())) { tasks = m.tasks; const calsChanged = sig({ tasks: [], tomb: {}, ou: 0, cals: m.cals }) !== sig({ tasks: [], tomb: {}, ou: 0, cals: meta.cals }); meta = { tomb: m.tomb, ou: m.ou, lists: m.lists, cals: m.cals }; save(); render(); if (calsChanged) loadCals(true); }
     setStatus("ok");
+    firstPull();
     await pullCaptures().catch((e) => console.error("inbox failed", e)); // never fails the sync
-  } catch (e) { console.error("sync failed", e); setStatus("error", e?.message ?? String(e)); } finally {
+  } catch (e) { console.error("sync failed", e); setStatus("error", e?.message ?? String(e)); firstPull(); } finally {
     running = false;
     if (code && sig(side()) !== start) queue(500);
   }
