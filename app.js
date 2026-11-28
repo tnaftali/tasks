@@ -1,4 +1,4 @@
-import { addDays, cleanCals, label, linkFallback, linkify, merge, move, newId, daysBetween, nextDate, nextMonday, normalize, spawnMissed, resetEvening, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
+import { addDays, cleanBin, cleanCals, label, linkFallback, linkify, merge, move, newId, daysBetween, nextDate, nextMonday, normalize, spawnMissed, resetEvening, parseBackup, parseLists, sig, today, whenLabel } from "./logic.js";
 import { fromCapture, parseOn, parseWhen } from "./nl.js";
 import { expand, onDay, span } from "./cal.js";
 import { VAPID_PUBLIC, ackInbox, captureUrl, derive, fetchCal, fetchTitle, newCode, parseCode, pullInbox, putReminders, sync } from "./sync.js";
@@ -35,7 +35,7 @@ const navShut = new Set(); try { for (const id of JSON.parse(localStorage.getIte
 const CAL = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>';
 // Our own dialog in place of confirm/prompt/alert. With `input` it returns the trimmed text, or null on cancel; without, true or false.
 const askd = $("ask"), aski = $("aski");
-function ask({ title, text = "", ok = "OK", input, cancel = true, danger = false }) {
+function ask({ title, text = "", ok = "OK", input, cancel = true, danger = false, alt }) { // alt: a third, red choice; resolves "alt"
   return new Promise((resolve) => {
     let out = null;
     $("askt").textContent = title; aski.setAttribute("aria-label", title);
@@ -45,6 +45,8 @@ function ask({ title, text = "", ok = "OK", input, cancel = true, danger = false
     aski.value = input ?? "";
     $("asko").textContent = ok;
     $("askx").hidden = !cancel;
+    $("aska").hidden = !alt; $("aska").textContent = alt ?? "";
+    $("aska").onclick = () => { out = "alt"; askd.close(); };
     askd.toggleAttribute("data-danger", danger);
     askd.onclose = () => resolve(out ?? (input === undefined ? false : null)); // Esc, a tap outside and Cancel all land here
     $("askf").onsubmit = () => { out = input === undefined ? true : aski.value.trim(); };
@@ -53,6 +55,8 @@ function ask({ title, text = "", ok = "OK", input, cancel = true, danger = false
   });
 }
 $("askx").onclick = () => askd.close();
+// A short message in the same bar, without an action.
+function notice(text) { const el = $("toast"); el.replaceChildren(text); el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 5000); }
 // A short-lived "Undo" bar instead of a confirm dialog.
 let toastTimer;
 function undoable(text, undo) {
@@ -64,10 +68,10 @@ function undoable(text, undo) {
 }
 const now = () => Date.now();
 const touch = (t) => { t.u = now(); };
-const drop = (t) => { meta.tomb[t.id] = now(); };
+const drop = (t, keep = true) => { meta.tomb[t.id] = now(); if (keep) meta.bin = cleanBin([{ at: now(), t: structuredClone(t) }, ...meta.bin]); }; // keep: restorable from Recently deleted
 
 function loadMeta() {
-  try { const m = normalize({ tasks: [], ...JSON.parse(localStorage.getItem(META)) }); return { tomb: m.tomb, ou: m.ou, lists: m.lists, cals: m.cals }; } catch { return { tomb: {}, ou: 0, lists: [], cals: cleanCals() }; }
+  try { const m = normalize({ tasks: [], ...JSON.parse(localStorage.getItem(META)) }); return { tomb: m.tomb, ou: m.ou, lists: m.lists, cals: m.cals, bin: m.bin }; } catch { return { tomb: {}, ou: 0, lists: [], cals: cleanCals(), bin: [] }; }
 }
 
 function load() {
@@ -84,6 +88,7 @@ function load() {
 function save() {
   const cut = now() - 90 * 864e5; // shortcut: deletes are forgotten after 90 days; a device offline longer can bring deleted tasks back
   for (const id in meta.tomb) if (meta.tomb[id] < cut) delete meta.tomb[id];
+  meta.bin = meta.bin.filter((e) => e.at > now() - 30 * 864e5); // Recently deleted keeps 30 days
   try {
     localStorage.setItem(KEY, JSON.stringify(tasks));
     localStorage.setItem(META, JSON.stringify(meta));
@@ -161,7 +166,7 @@ function row(t, td) {
   }
   const past = !!t.tm && new Date(`${t.date}T${t.tm}`) <= new Date(); // a passed time is hidden; the task keeps it
   const shown = past ? { ...t, tm: undefined } : t;
-  const label = view === "week" ? shown.tm ?? "" : view === "today" && (t.date === td || (t.date < td && !t.id.includes("@"))) ? shown.tm ?? "" : whenLabel(shown, td); // in Today every due row would just say "Today", so show only its time
+  const label = view === "week" || (view === "today" && (t.date === td || (t.date < td && !t.id.includes("@")))) ? `${t.rep ? "↻ " : ""}${shown.tm ?? ""}`.trim() : whenLabel(shown, td); // Today and Week show only the time; ↻ marks the repeating task itself // in Today every due row would just say "Today", so show only its time
   const chip = !!label && !t.done;
   const w = Object.assign(document.createElement("button"), { type: "button", className: "when chip", title: "Date and repeat", textContent: label });
   w.setAttribute("aria-label", "Date and repeat");
@@ -309,6 +314,7 @@ const wdEnd = (e) => {
   if (e.type !== "pointerup" || !d.zone) return render();
   const m = tasks.find((t) => t.id === d.id), to = d.zone.dataset.drop;
   if (!m) return render();
+  if (!to && m.rep) { notice("A repeating task needs a date. Open it and turn off the repeat first."); return render(); }
   if (to) { m.date = to; if (d.zone.dataset.ev) m.ev = true; else delete m.ev; } // the evening group sets the flag, the day's list clears it
   else { delete m.date; delete m.tm; delete m.ev; delete m.rep; } // into the Inbox: no date, so no time or repeat either
   touch(m);
@@ -738,7 +744,7 @@ list.addEventListener("change", (e) => {
   }
   const finish = () => {
     const before = e.target.checked && structuredClone(t); // undo restores the whole task: a repeating one gets its old date and checklist back
-    if (e.target.checked && t.rep) { const was = t.date; t.date = nextDate(t.date, t.rep, today()); if (t.dl) t.dl = addDays(t.dl, daysBetween(was, t.date)); t.c?.forEach((c) => { c.done = false; }); } // repeating: no done state, it moves to its next date with a fresh checklist
+    if (e.target.checked && t.rep) advance(t); // repeating: no done state, it moves to its next date with a fresh checklist
     else { t.done = e.target.checked; if (t.done) t.dt = now(); else delete t.dt; }
     touch(t); commit();
     if (before) undoable(t.rep ? "Moved to next date" : "Task completed", () => { const i = tasks.indexOf(t); if (i < 0) return; tasks[i] = before; touch(before); commit(); });
@@ -753,6 +759,8 @@ list.addEventListener("change", (e) => {
     setTimeout(finish, 320);
   }, 450);
 });
+// A repeating task's next date: what ticking it off does, and what "Skip this one" does without the tick.
+const advance = (t) => { const was = t.date; t.date = nextDate(t.date, t.rep, today()); if (t.dl) t.dl = addDays(t.dl, daysBetween(was, t.date)); t.c?.forEach((c) => { c.done = false; }); };
 list.addEventListener("click", async (e) => {
   if (e.target.closest("a")) return; // a link in a note opens the link, not the sheet
   if (e.target.closest(".when, .note, .t")) return openWhen(byId(e.target)); // a tap on the text opens the sheet: titles are edited there, not in the list
@@ -760,6 +768,15 @@ list.addEventListener("click", async (e) => {
   if (e.target.classList.contains("tc")) { const id = byId(e.target).id; if (!folded.delete(id)) folded.add(id); try { localStorage.setItem(FOLD, JSON.stringify([...folded])); } catch {} return render(); }
   if (!e.target.classList.contains("x")) return;
   const t = byId(e.target);
+  if (t.rep && !t.id.includes("@")) { // the repeating task itself (a missed day's copy has its own id and goes in one click)
+    const pick = await ask({ title: `Delete "${t.text}"?`, text: "It repeats. Skip just this date, or delete it and all its repeats.", ok: "Skip this one", alt: "Delete all repeats" });
+    if (!pick) return;
+    if (pick === true) {
+      const before = structuredClone(t);
+      advance(t); touch(t); commit();
+      return undoable(`Skipped to ${whenLabel({ date: t.date }, today())}`, () => { const i = tasks.indexOf(t); if (i < 0) return; tasks[i] = before; touch(before); commit(); });
+    }
+  }
   const at = tasks.indexOf(t);
   drop(t); tasks = tasks.filter((x) => x !== t); commit();
   undoable("Task deleted", () => { delete meta.tomb[t.id]; touch(t); tasks.splice(Math.min(at, tasks.length), 0, t); commit(); });
@@ -892,7 +909,7 @@ wd.addEventListener("cancel", () => { wdiscard = true; }); // Esc
 wd.addEventListener("close", () => {
   if (wdiscard) {
     const i = tasks.findIndex((x) => x.id === wid);
-    if (i >= 0) { if (wnew) { drop(tasks[i]); tasks.splice(i, 1); } else { tasks[i] = wsnap; touch(wsnap); } commit(); }
+    if (i >= 0) { if (wnew) { drop(tasks[i], false); tasks.splice(i, 1); } else { tasks[i] = wsnap; touch(wsnap); } commit(); }
   }
   wdiscard = wnew = false;
 });
@@ -1081,7 +1098,7 @@ let code = null, timer = 0, running = false, lastSync = 0, pulled = false; // pu
 const firstPull = () => { if (!pulled) { pulled = true; render(); } }; // now missed repeats may spawn
 try { lastSync = +localStorage.getItem(LASTSYNC) || 0; } catch {}
 try { code = localStorage.getItem(SYNC); } catch {}
-const side = () => ({ tasks, tomb: meta.tomb, ou: meta.ou, lists: meta.lists, cals: meta.cals });
+const side = () => ({ tasks, tomb: meta.tomb, ou: meta.ou, lists: meta.lists, cals: meta.cals, bin: meta.bin });
 const busy = () => drag || document.activeElement?.isContentEditable;
 const LABEL = { off: "", syncing: "Syncing…", ok: "", offline: "Offline", error: "Sync failed" };
 const stamp = (ms) => new Date(ms).toLocaleString([], new Date(ms).toDateString() === new Date().toDateString() ? { hour: "2-digit", minute: "2-digit" } : { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); // today: just the time
@@ -1109,7 +1126,7 @@ async function runSync() {
     const out = await sync(code, side());
     if (busy()) { setStatus("ok"); return queue(1500); }
     const m = merge(side(), out); // folds in edits made while the request ran
-    if (sig(m) !== sig(side())) { tasks = m.tasks; const calsChanged = sig({ tasks: [], tomb: {}, ou: 0, cals: m.cals }) !== sig({ tasks: [], tomb: {}, ou: 0, cals: meta.cals }); meta = { tomb: m.tomb, ou: m.ou, lists: m.lists, cals: m.cals }; save(); render(); if (calsChanged) loadCals(true); }
+    if (sig(m) !== sig(side())) { tasks = m.tasks; const calsChanged = sig({ tasks: [], tomb: {}, ou: 0, cals: m.cals }) !== sig({ tasks: [], tomb: {}, ou: 0, cals: meta.cals }); meta = { tomb: m.tomb, ou: m.ou, lists: m.lists, cals: m.cals, bin: m.bin }; save(); render(); if (calsChanged) loadCals(true); }
     setStatus("ok");
     firstPull();
     await pullCaptures().catch((e) => console.error("inbox failed", e)); // never fails the sync
@@ -1249,6 +1266,24 @@ function setCode(c) {
   if (c) runSync(); else setStatus("off");
 }
 
+// Recently deleted: what is still deleted (not restored, not back from elsewhere), newest first. Restore = a fresh edit, which beats the tombstone.
+const binNow = () => meta.bin.filter((e) => !tasks.some((t) => t.id === e.t.id) && (meta.tomb[e.t.id] ?? 0) >= e.at - 1000);
+const ago = (ms) => { const m = Math.round((now() - ms) / 6e4); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
+function drawBin() {
+  const items = binNow();
+  $("stt-bin").textContent = items.length || "";
+  $("binv").replaceChildren(...(items.length ? items.slice(0, 50).map((e) => {
+    const r = Object.assign(document.createElement("div"), { className: "binr" }), { l, sa } = placeOf(e.t);
+    const what = Object.assign(document.createElement("div"), { className: "bint" });
+    what.append(Object.assign(document.createElement("span"), { textContent: `${e.t.rep ? "↻ " : ""}${e.t.text}` }), Object.assign(document.createElement("small"), { textContent: [ago(e.at), e.t.id.includes("@") ? `for ${whenLabel({ date: e.t.date }, "1970-01-01")}` : "", sa ? sa.name : l?.name, e.t.done ? "done" : ""].filter(Boolean).join(" · ") })); // a missed day says which day
+    r.append(what, btn("Restore", "binb", () => {
+      const t = structuredClone(e.t);
+      delete meta.tomb[t.id]; touch(t); tasks.unshift(t); commit(); drawBin();
+      notice(`Restored "${t.text}"`);
+    }, "Restore this task"));
+    return r;
+  }) : [Object.assign(document.createElement("p"), { className: "hint", textContent: "Nothing deleted in the last 30 days." })]));
+}
 // Settings: one section open at a time, each header showing its state. Calendars, reminders and capture need sync.
 const SETOPEN = "braindump.setopen"; // per device: the section used last
 function openSection(k) {
@@ -1271,6 +1306,7 @@ function showDialog() {
   $("stt-rem").classList.toggle("on", !!code && remOn);
   $("stt-cap").textContent = !code ? "Needs sync" : "";
   $("stt-sync").textContent = code ? "On" : "Off";
+  drawBin();
   $("stt-sync").classList.toggle("on", !!code);
   drawCals();
 }

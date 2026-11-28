@@ -140,6 +140,7 @@
     <input id="aski" type="text" maxlength="200" autocomplete="off" aria-label="Name" hidden>
     <div class="row">
       <button type="button" id="askx">Cancel</button>
+      <button type="button" id="aska" class="danger" hidden></button>
       <button class="primary" id="asko"></button>
     </div>
   </form>
@@ -207,6 +208,13 @@
         <p class="hint">On the other device, open the link, or paste the code under Settings → Sync. On iPhone, join inside the installed app: it keeps its data apart from Safari.</p>
         <button class="danger" id="offb" type="button">Turn off on this device</button>
       </div>
+    </div>
+  </section>
+  <section class="ss" data-s="bin">
+    <button class="sh" type="button" aria-expanded="false"><svg class="si" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4.500h6V7M6 7l1 13h10l1-13"/><path d="M10 11v5M14 11v5"/></svg>Recently deleted<span class="stt" id="stt-bin"></span><svg class="sc" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+    <div class="sb">
+      <p>Deleted tasks stay here for 30 days, on all your devices.</p>
+      <div id="binv"></div>
     </div>
   </section>
   <section class="ss" data-s="bak">

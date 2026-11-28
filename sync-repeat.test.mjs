@@ -44,3 +44,19 @@ test("a repeating task deleted elsewhere does not come back as missed copies", (
   const merged = merge(side(laptop), side([], { bin: 7000 }));
   assert.deepEqual(merged.tasks.map((t) => t.id), []);
 });
+
+test("recently deleted syncs: both sides' deletions, newest first, a restore wins over the tombstone", async () => {
+  const { normalize, BIN_MAX } = await import("./logic.js");
+  const t = (id, u) => ({ id, text: id, done: false, u });
+  const a = { ...side([], { x: 50 }), bin: [{ at: 50, t: t("x", 10) }] };
+  const b = { ...side([], { y: 60 }), bin: [{ at: 60, t: t("y", 20) }] };
+  const m = merge(a, b);
+  assert.deepEqual(m.bin.map((e) => e.t.id), ["y", "x"]);
+  // restored on one device: a fresh edit beats the tombstone the other device still has
+  const restored = merge({ ...side([t("x", 99)]), bin: m.bin }, { ...side([], { x: 50 }), bin: m.bin });
+  assert.deepEqual(restored.tasks.map((x) => x.id), ["x"]);
+  // an older app's side (no bin) keeps it; the bin stays bounded
+  assert.equal(merge(normalize({ tasks: [] }), a).bin.length, 1);
+  const many = Array.from({ length: BIN_MAX + 20 }, (_, i) => ({ at: i, t: t(`k${i}`, i) }));
+  assert.equal(normalize({ bin: many }).bin.length, BIN_MAX);
+});
